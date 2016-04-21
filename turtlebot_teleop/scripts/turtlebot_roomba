@@ -30,17 +30,15 @@
 import rospy
 
 from geometry_msgs.msg import Twist
+from kobuki_msgs.msg import BumperEvent
 
 import sys, select, termios, tty
 
-msg = """
-Control Your Turtlebot!
----------------------------
-Moving around:
-   u    i    o
-   j    k    l
-   m    ,    .
+import time, random     # for roomba functions
 
+msg = """
+Turtle Roomba!
+---------------------------
 q/z : increase/decrease max speeds by 10%
 w/x : increase/decrease only linear speed by 10%
 e/c : increase/decrease only angular speed by 10%
@@ -50,37 +48,6 @@ anything else : stop smoothly
 CTRL-C to quit
 """
 
-moveBindings = {
-        'i':(1,0),
-        'o':(1,-1),
-        'j':(0,1),
-        'l':(0,-1),
-        'u':(1,1),
-        ',':(-1,0),
-        '.':(-1,1),
-        'm':(-1,-1),
-           }
-
-speedBindings={
-        'q':(1.1,1.1),
-        'z':(.9,.9),
-        'w':(1.1,1),
-        'x':(.9,1),
-        'e':(1,1.1),
-        'c':(1,.9),
-          }
-
-def getKey():
-    tty.setraw(sys.stdin.fileno())
-    rlist, _, _ = select.select([sys.stdin], [], [], 0.1)
-    if rlist:
-        key = sys.stdin.read(1)
-    else:
-        key = ''
-
-    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
-    return key
-
 speed = .2
 turn = 1
 button_pressed = False
@@ -88,8 +55,10 @@ button_pressed = False
 def vels(speed,turn):
     return "currently:\tspeed %s\tturn %s " % (speed,turn)
     
+# callback to handle if it runs into an object.
 def callback(data):
-    rospy.loginfo(rospy.get_caller_id() + 'I heard bumper=%s and state=%s', data.bumper, data.state)
+    global button_pressed
+    rospy.loginfo(rospy.get_caller_id() + ' I heard bumper=%s and state=%s', data.bumper, data.state)
     if data.bumper > 0: # Check that the value you want is data.bumper and not data.state
         button_pressed = True
 
@@ -97,57 +66,82 @@ if __name__=="__main__":
     settings = termios.tcgetattr(sys.stdin)
     
     rospy.init_node('turtlebot_roomba')
-    pub = rospy.Publisher('~cmd_vel', Twist vv  .     , queue_size=5)
+    pub = rospy.Publisher('~cmd_vel', Twist, queue_size=5)
     
     # Subscribe to the bumper topic
-    rospy.Subscriber('mobile_base/events/bumper', String, callback)
+    rospy.Subscriber('mobile_base/events/bumper', BumperEvent, callback)
 
-    #x = 0
-    th = 0
-    status = 0
-    count = 0
-    acc = 0.1
-    target_speed = 0
+    # robot will progressively move to target speed and target turn.
+    target_speed = .15
     target_turn = 0
     control_speed = 0
     control_turn = 0
+    new_path_threshold = 2 # number of seconds before choosing new path.
+    timer = time.clock() - new_path_threshold;
     try:
         print msg
         print vels(speed,turn)
         while(1):
-            #key = getKey()
-            if key in moveBindings.keys():
-                x = moveBindings[key][0]
-                th = moveBindings[key][1]
-                count = 0
-            elif key in speedBindings.keys():
-                speed = speed * speedBindings[key][0]
-                turn = turn * speedBindings[key][1]
-                count = 0
-
-                print vels(speed,turn)
-                if (status == 14):
-                    print msg
-                status = (status + 1) % 15
-                   
-
-            target_turn = turn * th
-
-            target_turn = control_turn
+            # stop the robot, back up, and turn around if the bumper was hit.
             if button_pressed:
-                control_turn = 
-                control_speed = 0.1
+                target_speed = 0
+                target_turn = 0
+                control_speed = 0
+                control_turn = 0
+                
+                # stop the robot.
+                twist = Twist()
+                twist.linear.x = control_speed; twist.linear.y = 0; twist.linear.z = 0
+                twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = control_turn
+                pub.publish(twist)
+                rospy.sleep(0.5)
+                
+                # back up a little.
+                control_speed = -.1
+                twist.linear.x = control_speed; twist.linear.y = 0; twist.linear.z = 0
+                twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = control_turn
+                pub.publish(twist)
+                pub.publish(twist)
+                rospy.sleep(1)
+                                
+                # resume normally, turn around very slowly.
+                control_speed = 0
+                target_speed = .01
+                target_turn = random.choice([-1,1])   
+                timer = time.clock();
+                new_path_threshold = random.randint(2,6)
                 button_pressed = False
+            
+            # if its traveled for a while, pick a random new path.
+            if time.clock() - timer > new_path_threshold:
+                target_speed = .15
+                target_turn = random.randint(-1,1)
+                # if its turning, wait less time to switch and move a little slower.
+                if target_turn:
+                    target_speed = .1
+                    new_path_threshold = random.randint(0, 1)
+                else:
+                    new_path_threshold = random.randint(2, 7)
+                rospy.loginfo(rospy.get_caller_id() + ' Target speed and turn: ' + str(target_speed) + ',' + str(target_turn))
+                # reset the timer.
+                timer = time.clock()
+
+            # progressively advance toward the goal.
+            if target_speed > control_speed:
+                control_speed = min( target_speed, control_speed + 0.01 )
+            elif target_speed < control_speed:
+                control_speed = max( target_speed, control_speed - 0.01 )
             else:
-                control_speed = 0.25
+                control_speed = target_speed
 
             if target_turn > control_turn:
-                control_turn = min( target_turn, control_turn + 0.1 )
+                control_turn = min( target_turn, control_turn + 0.05 )
             elif target_turn < control_turn:
-                control_turn = max( target_turn, control_turn - 0.1 )
+                control_turn = max( target_turn, control_turn - 0.05 )
             else:
+                # when it reaches the target, start turning back to straight.
                 control_turn = target_turn
-
+                
             # creates and publishes the twist to move the robot
             twist = Twist()
             twist.linear.x = control_speed; twist.linear.y = 0; twist.linear.z = 0
@@ -155,9 +149,9 @@ if __name__=="__main__":
             pub.publish(twist)
 
     except:
-        print e
+        print "Exception occurred."
 
-    finally:
+    finally: # ensures that the robot stops if error occurs.
         twist = Twist()
         twist.linear.x = 0; twist.linear.y = 0; twist.linear.z = 0
         twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = 0
