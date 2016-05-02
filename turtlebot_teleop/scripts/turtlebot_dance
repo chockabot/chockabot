@@ -1,0 +1,160 @@
+#!/usr/bin/env python
+
+# Copyright (c) 2011, Willow Garage, Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#    * Neither the name of the Willow Garage, Inc. nor the names of its
+#      contributors may be used to endorse or promote products derived from
+#       this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+import rospy
+
+from geometry_msgs.msg import Twist
+from kobuki_msgs.msg import BumperEvent
+
+import sys, select, termios, tty
+
+import time, random     # for dance functions
+
+msg = """
+Turtle DANCE!
+---------------------------
+q/z : increase/decrease max speeds by 10%
+w/x : increase/decrease only linear speed by 10%
+e/c : increase/decrease only angular speed by 10%
+space key, k : force stop
+anything else : stop smoothly
+
+CTRL-C to quit
+"""
+
+speed = .2
+turn = 1
+button_pressed = False
+
+def vels(speed,turn):
+    return "currently:\tspeed %s\tturn %s " % (speed,turn)
+    
+# callback to handle if it runs into an object.
+def callback(data):
+    global button_pressed
+    rospy.loginfo(rospy.get_caller_id() + ' I heard bumper=%s and state=%s', data.bumper, data.state)
+    if data.bumper > 0: # Check that the value you want is data.bumper and not data.state
+        button_pressed = True
+
+if __name__=="__main__":
+    settings = termios.tcgetattr(sys.stdin)
+    
+    rospy.init_node('turtlebot_dance')
+    pub = rospy.Publisher('~cmd_vel', Twist, queue_size=5)
+    
+    # Subscribe to the bumper topic
+    rospy.Subscriber('mobile_base/events/bumper', BumperEvent, callback)
+
+    # robot will progressively move to target speed and target turn.
+    target_speed = 0
+    speed_direction = 1
+    target_turn = 1
+    control_speed = 0
+    control_turn = 0
+    new_path_threshold = 2 # number of seconds before choosing new path.
+    timer = time.clock() - new_path_threshold;
+    try:
+        print msg
+        print vels(speed,turn)
+        while(1):
+            # stop the robot, back up, and turn around if the bumper was hit.
+            if button_pressed:
+                target_speed = 0
+                target_turn = 0
+                control_speed = 0
+                control_turn = 0
+                
+                # stop the robot.
+                twist = Twist()
+                twist.linear.x = control_speed; twist.linear.y = 0; twist.linear.z = 0
+                twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = control_turn
+                pub.publish(twist)
+                rospy.sleep(0.5)
+                
+                # back up a little.
+                control_speed = -.1
+                twist.linear.x = control_speed; twist.linear.y = 0; twist.linear.z = 0
+                twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = control_turn
+                pub.publish(twist)
+                pub.publish(twist)
+                rospy.sleep(1)
+                                
+                # resume normally, turn around very slowly.
+                control_speed = 0
+                target_speed = .01
+                target_turn = random.choice([-1,1])   
+                timer = time.clock();
+                button_pressed = False
+            
+            # if its traveled for a while, pick a random new path.
+            if time.clock() - timer > new_path_threshold:
+                print 'Next clock cycle: ', target_speed, speed_direction, target_turn
+                speed_direction *= -1
+                target_speed = 0.07
+                target_turn *= speed_direction #-1 #random.choice([-1,1])
+
+                rospy.loginfo(rospy.get_caller_id() + ' Target speed and turn: ' + str(target_speed) + ',' + str(target_turn))
+                print rospy.get_caller_id() + ' Target speed and turn: ' + str(target_speed) + ',' + str(target_turn)
+                # reset the timer.
+                timer = time.clock()
+            
+
+            # progressively advance toward the goal.
+            if target_speed > control_speed:
+                control_speed = min( target_speed, control_speed + 0.001 )
+            elif target_speed < control_speed:
+                control_speed = max( target_speed, control_speed - 0.001 )
+            else:
+                control_speed = target_speed
+
+            if target_turn > control_turn:
+                control_turn = min( target_turn, control_turn + 0.005 )
+            elif target_turn < control_turn:
+                control_turn = max( target_turn, control_turn - 0.005 )
+            else:
+                # when it reaches the target, start turning back to straight.
+                control_turn = target_turn
+                
+            # creates and publishes the twist to move the robot
+            twist = Twist()
+            twist.linear.x = (control_speed * speed_direction); twist.linear.y = 0; twist.linear.z = 0
+            twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = control_turn
+            pub.publish(twist)
+
+    except:
+        print "Exception occurred."
+
+    finally: # ensures that the robot stops if error occurs.
+        twist = Twist()
+        twist.linear.x = 0; twist.linear.y = 0; twist.linear.z = 0
+        twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = 0
+        pub.publish(twist)
+
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+

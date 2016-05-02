@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+
+import rospy
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Quaternion, Pose, Point, Vector3
+from std_msgs.msg import Header, ColorRGBA
+import tf
+
+if __name__ == '__main__':
+    id_num = 0
+    prev_pose = None
+    epsilon = 0.02
+    
+    print "starting program"
+    rospy.init_node("turtlebot_pathmaker")
+    marker_publisher = rospy.Publisher('visualization_marker', Marker)
+    listener = tf.TransformListener()
+    
+    print "about to enter loop"
+    while not rospy.is_shutdown():
+        try:
+            (trans, rot) = listener.lookupTransform('/odom', '/base_link', rospy.Time(0))
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
+            continue
+        
+        if prev_pose == None:
+            prev_pose = Point(trans[0], trans[1], trans[2])
+            continue
+        
+        dist = ((trans[0] - prev_pose.x)**2 + (trans[1] - prev_pose.y)**2)**0.5
+        
+        if dist > epsilon:
+            # print 'Publishing marker'
+            marker = Marker(type=Marker.LINE_STRIP, id=id_num,
+                lifetime=rospy.Duration(20),
+                pose=Pose(Point(0, 0, .3), Quaternion(0, 0, 0, 1)),
+                points= [ prev_pose, Point(trans[0], trans[1], trans[2]) ],
+                scale=Vector3(0.06, 0.06, 0.06),
+                header=Header(frame_id='odom'),
+                color=ColorRGBA(0.0, 1.0, 0.0, 0.8))
+            marker_publisher.publish(marker)
+            
+            id_num += 1
+            prev_pose = Point(trans[0], trans[1], trans[2])
+        
+        

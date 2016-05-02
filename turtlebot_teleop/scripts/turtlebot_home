@@ -1,0 +1,102 @@
+#!/usr/bin/env python
+
+import rospy
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Quaternion, Pose, Point, Vector3, PoseWithCovarianceStamped, Twist
+from std_msgs.msg import Header, ColorRGBA
+import tf
+from tf.transformations import euler_from_quaternion
+import math
+
+pub = None
+ANGLE_ERROR = 0.05
+LOCATION_ERROR = 0.05
+DISTANCE_RATE_HIGH = 0.5
+DISTANCE_RATE_LOW = 0.2
+ANGLE_RATE = 0.5
+control_turn = 0
+
+PI = math.pi
+TAU = 2*PI
+def smallestSignedAngleBetween(x, y):
+    return min(y-x, y-x+2*math.pi, y-x-2*math.pi, key=abs)
+    
+def update_odom(data):
+    global pub
+    global ANGLE_ERROR
+    global control_turn
+    cur_pos = data.pose.pose.position
+    
+    orientation = data.pose.pose.orientation
+    
+    quaternion = (orientation.x, orientation.y, orientation.z, orientation.w)
+    
+    euler = euler_from_quaternion(quaternion)
+    roll = euler[0]
+    pitch = euler[1]
+    yaw = euler[2]
+    
+    # Move by 90 degrees to make it correct
+    # We shouldn't have to do this (and it's stil off)
+    # The angle is always the same amount away from pointing to the origin...
+    #yaw = yaw + math.pi/2
+    #if yaw > math.pi:
+    #    yaw = yaw - (2 * math.pi)
+    
+    # First calculate rotaion needed to point to center
+    twist = Twist()
+    
+    # Calculate our target based on the oposite of our angle from the origin
+    target_rotation = math.atan2(cur_pos.y, cur_pos.x) + math.pi
+    if target_rotation > math.pi:
+        target_rotation -= 2*math.pi
+    
+    # We need to calculate the difference between our rotation (yaw) and the target rotation
+    # This should be correct but the above change is needed for some reason
+    rotation_angle = math.atan2(math.sin(target_rotation - yaw), math.cos(target_rotation - yaw))
+    
+    # print "publishing", rotation_angle
+    twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = 0
+    twist.linear.x = 0; twist.linear.y = 0; twist.linear.z = 0
+
+    
+       
+    distance = math.sqrt(cur_pos.y**2 + cur_pos.x**2)
+    if distance > LOCATION_ERROR:
+        if rotation_angle > ANGLE_ERROR or rotation_angle < -ANGLE_ERROR:
+            twist.angular.z = rotation_angle * ANGLE_RATE
+            twist.linear.x = min(distance * DISTANCE_RATE_LOW, 0.2)
+        else:
+            twist.linear.x = min(distance * DISTANCE_RATE_HIGH, 0.2)
+        control_turn = 0
+    elif abs(yaw) > ANGLE_ERROR:
+        target_turn = -yaw
+        if target_turn > control_turn:
+            control_turn = min(target_turn, control_turn + ANGLE_ERROR)
+        elif target_turn < control_turn:
+            control_turn = max(target_turn, control_turn - ANGLE_ERROR)
+        else:
+            control_turn = target_turn
+        print "Turning roboton home loc: %s" % control_turn        
+        control_turn = min(control_turn, 0.5)
+        control_turn = max(control_turn, -0.5)     
+        twist.angular.z = control_turn
+
+    pub.publish(twist)
+        
+
+if __name__ == '__main__':
+    id_num = 0
+    prev_pose = Point(0, 0, 0)
+    global pub
+    
+    
+    print "starting program"
+    rospy.init_node("turtlebot_home")
+    pub = rospy.Publisher('~cmd_vel', Twist, queue_size=5)
+    print 'Setting up subscriber...'
+    rospy.Subscriber('robot_pose_ekf/odom_combined', PoseWithCovarianceStamped, update_odom)
+    rospy.spin()
+            
+               
+        

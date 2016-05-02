@@ -1,0 +1,385 @@
+#!/usr/bin/env python
+
+# Copyright (c) 2011, Willow Garage, Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#    * Neither the name of the Willow Garage, Inc. nor the names of its
+#      contributors may be used to endorse or promote products derived from
+#       this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+import rospy
+
+import copy
+import easygui
+import json
+
+from interactive_markers.interactive_marker_server import *
+from interactive_markers.menu_handler import *
+from visualization_msgs.msg import *
+from geometry_msgs.msg import Point, PoseStamped, Pose, Quaternion
+
+from random import random
+from math import sin
+
+server = None
+menu_handler = MenuHandler()
+marker_menu_handler = MenuHandler()
+counter = 0
+created_points = {}
+file_name = None
+pub = None
+seq_num = 0
+
+POSE_TYPE = 2
+REGION_TYPE = 1
+type_to_create = {
+    POSE_TYPE : lambda pose_data, name: makePoseMarker(
+        Point(pose_data[0][0], pose_data[0][1], 0), pose_data[1], name),
+    REGION_TYPE : lambda pose_data, name: makeRegionMarker(
+        Point(pose_data[0][0], pose_data[0][1], 0), name)
+}
+
+def processFeedback( feedback ):
+    s = "Feedback from marker '" + feedback.marker_name
+    s += "' / control '" + feedback.control_name + "'"
+
+    mp = ""
+    if feedback.mouse_point_valid:
+        mp = " at " + str(feedback.mouse_point.x)
+        mp += ", " + str(feedback.mouse_point.y)
+        mp += ", " + str(feedback.mouse_point.z)
+        mp += " in frame " + feedback.header.frame_id
+
+    if feedback.event_type == InteractiveMarkerFeedback.BUTTON_CLICK:
+        rospy.loginfo( s + ": button click" + mp + "." )
+    elif feedback.event_type == InteractiveMarkerFeedback.MENU_SELECT:
+        rospy.loginfo( s + ": menu item " + str(feedback.menu_entry_id) + " clicked" + mp + "." )
+        if str(feedback.menu_entry_id) == '1':
+            makePoseMarker(Point( 0, 0, 2))
+        elif str(feedback.menu_entry_id) == '2':
+            makeRegionMarker(Point( 0, 0, 2))
+            
+    elif feedback.event_type == InteractiveMarkerFeedback.POSE_UPDATE:
+        rospy.loginfo( s + ": pose changed")
+        updateMarker(feedback)
+    
+    elif feedback.event_type == InteractiveMarkerFeedback.MOUSE_DOWN:
+        rospy.loginfo( s + ": mouse down" + mp + "." )
+    elif feedback.event_type == InteractiveMarkerFeedback.MOUSE_UP:
+        rospy.loginfo( s + ": mouse up" + mp + "." )
+        updateMarker(feedback)
+        
+        
+        
+    server.applyChanges()
+    
+def updateMarker( feedback ):
+    int_marker = server.get(feedback.marker_name)
+    
+    if int_marker.name == 'context_menu':
+        return
+        
+    if len(created_points[int_marker.name]) == POSE_TYPE:
+        o, p = (int_marker.pose.orientation, int_marker.pose.position)    
+        created_points[int_marker.name] = ((p.x, p.y), (o.z, o.w))
+    else:
+        p = int_marker.pose.position 
+        created_points[int_marker.name] = ((p.x, p.y), )
+    if file_name:
+        writePointsToFile(file_name)
+    
+def makeRegionBox( msg ):
+    marker = Marker()
+
+    marker.type = Marker.CYLINDER
+    marker.scale.x = msg.scale * 1.9
+    marker.scale.y = msg.scale * 1.9
+    marker.scale.z = msg.scale * 1.9
+    marker.color.r = 0.0
+    marker.color.g = 0.5
+    marker.color.b = 0.0
+    marker.color.a = 0.3
+
+    return marker
+
+def makeTurtleBox( msg ):
+    marker = Marker()
+    marker.type = Marker.ARROW
+    marker.scale.x = msg.scale * 0.3
+    marker.scale.y = msg.scale * 0.3
+    marker.scale.z = msg.scale * 0.45
+    marker.color.r = 0.2
+    marker.color.g = 0.5
+    marker.color.b = 0.0
+    marker.color.a = 1.0
+
+    return marker
+    
+def makeTurtleHead( msg ):
+    marker = Marker()
+
+    marker.type = Marker.SPHERE
+    marker.scale.x = msg.scale * 0.5
+    marker.scale.y = msg.scale * 0.5 - .2
+    marker.scale.z = msg.scale * 0.5
+    marker.color.r = 0.0
+    marker.color.g = 0.5
+    marker.color.b = 0.0
+    marker.color.a = 1.0
+
+    return marker
+    
+def makeTurtleArm( msg ):
+    marker = Marker()
+
+    marker.type = Marker.SPHERE
+    marker.scale.x = msg.scale * 0.1
+    marker.scale.y = msg.scale * 0.6
+    marker.scale.z = msg.scale * 0.5
+    marker.color.r = 0.0
+    marker.color.g = 0.5
+    marker.color.b = 0.0
+    marker.color.a = 1.0
+
+    return marker
+    
+def makeBoxControl( msg ):
+    control = InteractiveMarkerControl()
+    control.always_visible = True
+    control.markers.append( makeTurtleBox(msg) )
+    control.markers.append( makeTurtleHead(msg) )
+    control.markers.append( makeTurtleArm(msg) )
+    msg.controls.append( control )
+    return control
+    
+def makeMenuMarker( position ):
+    int_marker = InteractiveMarker()
+    int_marker.header.frame_id = "odom"
+    int_marker.pose.position = position
+    int_marker.scale = 1
+
+    int_marker.name = "context_menu"
+    int_marker.description = "Context Menu\n(Right Click)"
+
+    # make one control using default visuals
+    control = InteractiveMarkerControl()
+    control.interaction_mode = InteractiveMarkerControl.MENU
+    control.description="Options"
+    control.name = "menu_only_control"
+    int_marker.controls.append(copy.deepcopy(control))
+
+    # make one control showing a box
+    # marker = makeBox( int_marker )
+    # control.markers.append( marker )
+    control.always_visible = True
+    int_marker.controls.append(control)
+
+    server.insert(int_marker, processFeedback)
+    menu_handler.apply( server, int_marker.name )
+    
+def makeRegionMarker( position, value=None ):
+    int_marker = InteractiveMarker()
+    int_marker.header.frame_id = "odom"
+    int_marker.pose.position = position
+    int_marker.scale = 1
+
+    if not value:
+        value = easygui.enterbox()
+        if not value:
+            return
+    
+    int_marker.name = value
+    int_marker.description = value
+
+    control = InteractiveMarkerControl()
+    control.orientation.w = 1
+    control.orientation.x = 0
+    control.orientation.y = 1
+    control.orientation.z = 0
+    control.interaction_mode = InteractiveMarkerControl.MOVE_PLANE
+    int_marker.controls.append(copy.deepcopy(control))
+
+    # make a box which also moves in the plane
+    control.markers.append( makeRegionBox(int_marker) )
+    control.always_visible = True
+    int_marker.controls.append(control)
+    
+    p = int_marker.pose.position
+    created_points[int_marker.name] = ((p.x, p.y), )
+    
+    # we want to use our special callback function
+    server.insert(int_marker, processFeedback)
+    marker_menu_handler.apply( server, int_marker.name )
+
+def makePoseMarker( position, orientation=None, value=None ):
+    int_marker = InteractiveMarker()
+    int_marker.header.frame_id = "odom"
+    int_marker.pose.position = position
+    int_marker.scale = 1
+    
+    if orientation:
+        int_marker.pose.orientation.z = orientation[0]
+        int_marker.pose.orientation.w = orientation[1]
+
+    if not value:
+        value = easygui.enterbox()
+        if not value:
+            return
+    
+    int_marker.name = value
+    int_marker.description = value
+
+    makeBoxControl(int_marker)
+
+    control = InteractiveMarkerControl()
+    control.orientation.w = 1
+    control.orientation.x = 0
+    control.orientation.y = 1
+    control.orientation.z = 0
+    control.interaction_mode = InteractiveMarkerControl.MOVE_ROTATE
+    # int_marker.controls.append(copy.deepcopy(control))
+    # control.interaction_mode = InteractiveMarkerControl.MOVE_AXIS
+    int_marker.controls.append(control)
+    
+    o, p = (int_marker.pose.orientation, int_marker.pose.position)
+    created_points[int_marker.name] = ((p.x, p.y), (o.z, o.w))
+
+    server.insert(int_marker, processFeedback)
+    marker_menu_handler.apply( server, int_marker.name )
+    
+def createPose( feedback=None, position=None ):
+    if not position:
+        position = Point( 0, 0, 2)
+    makePoseMarker( position )
+    
+def createRegion( feedback=None, position=None ):
+    if not position:
+        position = Point( 0, 0, 2)
+    makeRegionMarker( position )
+    
+def writePointsToFile( value=file_name ):
+    global file_name
+    if not value:
+        value = easygui.filesavebox(msg="Enter file to write", filetypes="*.itm")
+        if value[len(value) - 4:len(value)] != '.itm':
+            value += '.itm'
+        file_name = value
+    try:
+        f = open( value, 'w' )
+        f.write( str( json.dumps( created_points ) ) ) 
+        f.close()  
+        rospy.loginfo('Wrote to file %s' % (value))            
+    except Exception as e:
+        rospy.loginfo( 'Could not write to %s file: %s' % ( file_name, e ) )
+
+def saveMarkers ( feedback ):
+    global file_name
+    file_name = None
+    writePointsToFile()
+
+def navigate ( feedback ):
+    global seq_num
+    pos_info = created_points[feedback.marker_name]
+    x, y, z, w = (0, 0, 0, 1)
+    if len(pos_info) == 2:
+        (x, y), (z, w) = pos_info
+    else:
+        (x, y) = pos_info[0]
+       
+    
+    message = PoseStamped()
+    
+    message.header.frame_id = 'odom'
+    message.header.seq = seq_num
+    seq_num += 1
+    message.pose = Pose(Point(x, y, 0), Quaternion(0, 0, z, w))
+    
+    pub.publish(message)
+    print 'Published navigation.'
+    
+def deleteMarker ( feedback ):
+    removeMarker(feedback.marker_name)
+    writePointsToFile()
+
+def removeMarker( name ):
+    del created_points[name]
+    server.erase(name)
+    server.applyChanges()
+
+def loadPointsFromFile( feedback, remove_current=True):
+    global created_points, file_name
+    try:
+        value = easygui.fileopenbox(msg="Enter file to read", filetypes="*.itm")
+    except Exception as e:
+        # User canceled the open
+        rospy.loginfo('User canceled the open: %s' % e)
+        return
+    
+    if remove_current:
+        for name in created_points.keys():
+            removeMarker( name )    
+    created_points = {}
+    
+    new_points = {}
+    try:
+        f = open(value, 'r')
+        new_points = json.loads( f.read() ) 
+        f.close()
+        
+        for pt_name in new_points.keys():
+            pose_data = new_points[pt_name]            
+            type_to_create[len(pose_data)](pose_data, pt_name)
+        
+        rospy.loginfo('Loaded from file %s' % (value))
+        server.applyChanges()
+        file_name = value  
+        rospy.loginfo('created_points: %s' % created_points)  
+        
+    except Exception as e:
+        rospy.loginfo('Could not load from file %s: %s' % (value, e))
+        
+    
+if __name__=="__main__":
+    rospy.init_node("markerzzz")
+    
+    server = InteractiveMarkerServer("markerzzz")
+    pub = rospy.Publisher("move_base_simple/goal", PoseStamped, queue_size=10)
+
+    menu_handler.insert( "Create Pose", callback=processFeedback )
+    menu_handler.insert( "Create Region", callback=processFeedback )
+    menu_handler.insert( "Save", callback=saveMarkers )
+    menu_handler.insert( "Load", callback=loadPointsFromFile )
+    # sub_menu_handle = menu_handler.insert( "Create" )
+    # sub_menu_handle_rem = menu_handler.insert( "Remove" ) #TODO remove menu
+    # menu_handler.insert( "Pose", parent=sub_menu_handle, callback=processFeedback )
+    # menu_handler.insert( "Region", parent=sub_menu_handle, callback=processFeedback )
+    
+    marker_menu_handler.insert( "Navigate To", callback=navigate )
+    marker_menu_handler.insert( "Delete", callback=deleteMarker )
+  
+     # creates the menu
+    position = Point( 3, 3, 0)
+    makeMenuMarker( position )
+
+    server.applyChanges()
+    rospy.spin()
