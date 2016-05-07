@@ -155,9 +155,8 @@ def assignPose(data):
     cur_pose = data.pose.pose
     
 if __name__=="__main__":
-    global pub
-    
-    rospy.init_node("auto_fallacio")
+   
+    rospy.init_node("turtlebot_feducial")
     
     # DOESNT WORK....
     # pub = rospy.Publisher("move_base_simple/goal", PoseStamped, queue_size=10)

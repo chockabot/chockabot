@@ -1,8 +1,8 @@
 <launch>
   <!-- turtlebot_teleop_key already has its own built in velocity smoother -->
-  <node pkg="turtlebot_teleop" type="turtlebot_automatic_fallacio" name="turtlebot_automatic_fallacio" output="screen">
+  <node pkg="turtlebot_teleop" type="turtlebot_feducial" name="turtlebot_feducial" output="screen">
     <param name="scale_linear" value="0.5" type="double"/>
     <param name="scale_angular" value="1.5" type="double"/>
-    <remap from="turtlebot_automatic_fallacio/cmd_vel" to="cmd_vel_mux/input/teleop"/>
+    <remap from="turtlebot_feducial/cmd_vel" to="cmd_vel_mux/input/teleop"/>
   </node>
 </launch>
