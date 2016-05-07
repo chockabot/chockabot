@@ -1,0 +1,169 @@
+#!/usr/bin/env python
+
+# Copyright (c) 2011, Willow Garage, Inc.
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#    * Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#    * Redistributions in binary form must reproduce the above copyright
+#      notice, this list of conditions and the following disclaimer in the
+#      documentation and/or other materials provided with the distribution.
+#    * Neither the name of the Willow Garage, Inc. nor the names of its
+#      contributors may be used to endorse or promote products derived from
+#       this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
+import rospy
+
+import copy
+import easygui
+import json
+
+from visualization_msgs.msg import *
+from geometry_msgs.msg import Point, PoseStamped, Pose, PoseWithCovarianceStamped, Quaternion, Twist
+from ar_track_alvar_msgs.msg import AlvarMarkers
+from random import random
+from math import sin
+import tf
+from tf.transformations import euler_from_quaternion
+import math
+
+pub = None
+cur_pose = None
+ANGLE_ERROR = 0.05
+DISTANCE_RATE_HIGH = .6
+DISTANCE_RATE_LOW = .9
+ANGLE_RATE = 2 # the rate at which the angle is adjusted.
+control_turn = 0
+
+target_distance = 0.4
+
+# std_msgs/Header header
+#     uint32 seq
+#     time stamp
+#     string frame_id
+# ar_track_alvar/AlvarMarker[] markers
+#     std_msgs/Header header
+#         uint32 seq
+#         time stamp
+#         string frame_id
+#     uint32 id
+#     uint32 confidence
+#     geometry_msgs/PoseStamped pose
+#         Header header
+#         Pose pose
+def callback ( data ):
+    global pub
+    global ANGLE_ERROR
+    global control_turn
+    
+    if not cur_pose:
+        print 'waiting for odom_combined to be published..'
+        return
+    
+    # to be used later
+    num_markers = len(data.markers)
+    if not num_markers:
+        return
+        
+    # currently just aligns with the first marker it sees
+    marker = data.markers[0]
+    id = marker.id
+     
+    # # Goal idea deprecated..
+    # message = PoseStamped()
+    # message.header.frame_id = 'camera_rgb_optical_frame'
+    # # message.header.seq = marker.header.seq
+    # # seq_num += 1
+    # message.pose = Pose(Point(marker.pose.pose.position.x, marker.pose.pose.position.y, 0), marker.pose.pose.orientation)
+    
+    # pub.publish(message)
+    # print 'published goal.'
+    
+    #####################################
+    # same as homing, except we are traveling toward the qr tag rather than 0,0,0
+    
+    orientation = cur_pose.orientation
+    quaternion = (orientation.x, orientation.y, orientation.z, orientation.w)
+    
+    euler = euler_from_quaternion(quaternion)
+    roll = euler[0]
+    pitch = euler[1]
+    yaw = euler[2]
+    
+    twist = Twist()
+    
+    # Calculate our target based on the oposite of our angle from the origin
+    target_rotation = math.atan2(marker.pose.pose.position.y,  marker.pose.pose.position.x) 
+    if target_rotation > math.pi:
+        target_rotation -= 2*math.pi
+        
+    print 'targetrotation=', target_rotation
+    # We need to calculate the difference between our rotation (yaw) and the target rotation
+    # This should be correct but the above change is needed for some reason
+    rotation_angle = target_rotation #math.atan2(math.sin(target_rotation - yaw), math.cos(target_rotation - yaw))
+    
+    twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = 0
+    twist.linear.x = 0; twist.linear.y = 0; twist.linear.z = 0
+    
+    distance = math.sqrt(marker.pose.pose.position.y**2 + marker.pose.pose.position.x**2)
+    
+    if distance < target_distance:
+        print 'made it!....................................!'
+        return
+        
+    if rotation_angle > ANGLE_ERROR or rotation_angle < -ANGLE_ERROR:
+        twist.angular.z = rotation_angle * ANGLE_RATE
+        twist.linear.x = min((distance * 3) * DISTANCE_RATE_LOW, 0.2)
+    else:
+        twist.linear.x = min((distance * 3) * DISTANCE_RATE_HIGH, 0.2)
+    control_turn = 0
+    # elif abs(yaw) > ANGLE_ERROR:
+    #     print ' made the distance.....'
+    #     target_turn = -yaw
+    #     if target_turn > control_turn:
+    #         control_turn = min(target_turn, control_turn + ANGLE_ERROR)
+    #     elif target_turn < control_turn:
+    #         control_turn = max(target_turn, control_turn - ANGLE_ERROR)
+    #     else:
+    #         control_turn = target_turn
+    #     # print "Turning roboton home loc: %s" % control_turn        
+    #     control_turn = min(control_turn, 0.5)
+    #     control_turn = max(control_turn, -0.5)     
+    #     twist.angular.z = control_turn
+
+    print 'publishing data: linear.x=' + str(twist.linear.x) + ' angular.z=' + str(twist.angular.z)
+    # for i in range(0, 10000):
+    pub.publish(twist)
+    
+def assignPose(data):
+    global cur_pose
+    cur_pose = data.pose.pose
+    
+if __name__=="__main__":
+    global pub
+    
+    rospy.init_node("auto_fallacio")
+    
+    # DOESNT WORK....
+    # pub = rospy.Publisher("move_base_simple/goal", PoseStamped, queue_size=10)
+    pub = rospy.Publisher('~cmd_vel', Twist, queue_size=5)
+    
+    # subscribes to the topic giving us the markers and their positions.
+    rospy.Subscriber('ar_pose_marker', AlvarMarkers, callback)
+    rospy.Subscriber('robot_pose_ekf/odom_combined', PoseWithCovarianceStamped, assignPose)
+    rospy.spin()
