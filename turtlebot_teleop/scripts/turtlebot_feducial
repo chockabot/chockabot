@@ -45,8 +45,8 @@ import math
 pub = None
 cur_pose = None
 ANGLE_ERROR = 0.05
-DISTANCE_RATE_HIGH = .6
-DISTANCE_RATE_LOW = .9
+DISTANCE_RATE_HIGH = .9
+DISTANCE_RATE_LOW = .6
 ANGLE_RATE = 2 # the rate at which the angle is adjusted.
 control_turn = 0
 
@@ -84,16 +84,6 @@ def callback ( data ):
     marker = data.markers[0]
     id = marker.id
      
-    # # Goal idea deprecated..
-    # message = PoseStamped()
-    # message.header.frame_id = 'camera_rgb_optical_frame'
-    # # message.header.seq = marker.header.seq
-    # # seq_num += 1
-    # message.pose = Pose(Point(marker.pose.pose.position.x, marker.pose.pose.position.y, 0), marker.pose.pose.orientation)
-    
-    # pub.publish(message)
-    # print 'published goal.'
-    
     #####################################
     # same as homing, except we are traveling toward the qr tag rather than 0,0,0
     
@@ -132,23 +122,10 @@ def callback ( data ):
     else:
         twist.linear.x = min((distance * 3) * DISTANCE_RATE_HIGH, 0.2)
     control_turn = 0
-    # elif abs(yaw) > ANGLE_ERROR:
-    #     print ' made the distance.....'
-    #     target_turn = -yaw
-    #     if target_turn > control_turn:
-    #         control_turn = min(target_turn, control_turn + ANGLE_ERROR)
-    #     elif target_turn < control_turn:
-    #         control_turn = max(target_turn, control_turn - ANGLE_ERROR)
-    #     else:
-    #         control_turn = target_turn
-    #     # print "Turning roboton home loc: %s" % control_turn        
-    #     control_turn = min(control_turn, 0.5)
-    #     control_turn = max(control_turn, -0.5)     
-    #     twist.angular.z = control_turn
 
     print 'publishing data: linear.x=' + str(twist.linear.x) + ' angular.z=' + str(twist.angular.z)
-    # for i in range(0, 10000):
-    pub.publish(twist)
+    for i in range(5):
+        pub.publish(twist)
     
 def assignPose(data):
     global cur_pose

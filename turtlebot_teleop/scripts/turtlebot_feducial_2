@@ -1,0 +1,81 @@
+#!/usr/bin/env python
+
+import rospy
+
+from actionlib import SimpleActionClient
+from ar_track_alvar_msgs.msg import AlvarMarkers
+from move_base_msgs.msg import MoveBaseActionGoal, MoveBaseActionFeedback, MoveBaseActionResult, MoveBaseAction, MoveBaseGoal, MoveBaseResult
+from tf.transformations import euler_from_quaternion
+
+ACTION_ACTIVE = 1
+ACTION_ABORTED = 4
+ACTION_SUCCEEDED = 3
+
+# the distance that the turtlebot should be in front of the fiducial when it stops.
+DISTANCE_FROM_FIDUCIAL = 0.5
+
+cur_pose = None
+move_client = None
+currently_moving = False
+
+def callback(data):
+    global currently_moving
+    
+    # If it is already running a goal, wait until it's done.
+    if currently_moving:
+        return
+        
+    # to be used later, when we may have multiple feducials seen at once.
+    num_markers = len(data.markers)
+    if not num_markers:
+        # print 'no fiducials seen.'
+        return
+    else:
+        currently_moving = True
+                
+    # currently just aligns with the first marker in the sequence
+    new_pose = data.markers[0].pose.pose
+    
+    # creates the goal and assigns the position and orientation
+    # currently, the robot will drive toward the fidoucheal until it is
+    # exactly DISTANCE_FROM_FIDUCIAL away and orientate itself directly
+    # toward the fiducial.
+    new_goal = MoveBaseGoal()
+    
+    # assigns position
+    new_goal.target_pose.pose.position.x = new_pose.position.x - DISTANCE_FROM_FIDUCIAL
+    new_goal.target_pose.pose.position.y = new_pose.position.y
+    
+    # assigns the orientation - currently just looks toward the fiducial.
+    # TODO - figure out how to assign the orientation so it faces directly on line with the bins.
+    new_goal.target_pose.pose.orientation.w = new_pose.orientation.w
+    new_goal.target_pose.pose.orientation.z = new_pose.orientation.z
+    
+    # makes everything relative to 'base link' - THIS FRAME MUST BE THE OUTPUT FRAME specified in the turtlebot_fiducials_2.launch file
+    new_goal.target_pose.header.frame_id = 'base_link'
+    
+    print 'sending goal'
+    move_client.send_goal(new_goal)
+    move_client.wait_for_result()
+    
+    # Checks the status of the goal. 
+    if (move_client.get_state() == ACTION_SUCCEEDED):
+        print 'action succeeded'
+    else:
+        print "action didn't succeed"
+    
+    currently_moving = False
+    
+if __name__=="__main__":
+    global move_client
+
+    rospy.init_node("turtlebot_feducial_2")
+    
+    move_client = SimpleActionClient('move_base', MoveBaseAction)
+    print 'waiting for server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch` on the robot.'
+    move_client.wait_for_server()
+    
+    # subscribes to the topic giving us the markers and their positions.
+    print 'subscribing to ar_pose_marker topic... if it doesnt continue, run `roslaunch turtlebot_teleop alvar.launch` on computer.'
+    rospy.Subscriber('ar_pose_marker', AlvarMarkers, callback)
+    rospy.spin()
