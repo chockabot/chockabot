@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+
+import rospy
+from std_msgs.msg import String
+import actionlib
+from move_base_msgs.msg import MoveBaseActionGoal
+
+items = dict()
+locations = dict()
+client = None
+
+def callback(data):
+    item, location = data.data.split('\t')
+
+def action_client():
+    global client
+    client = actionlib.SimpleActionClient('move_base', MoveBaseActionGoal)
+    client.wait_for_server()
+
+def process_goal(item, location):
+    # Still need to derive item and locations
+    # area info
+    global client
+    
+    goal = MoveBaseActionGoal()
+    client.send_goal(goal)
+    
+    client.wait_for_result()
+    result = client.get_result()
+    
+    # Now we go to location
+    goal = MoveBaseActionGoal()
+    client.send_goal(goal)
+    client.wait_for_result()
+    return result + "\t" + client.get_result()
+     
+if __name__ == "main":
+    rospy.init_node('item_request_server')
+    rospy.Subscriber('item_requests', String, callback)
+    rospy.spin()

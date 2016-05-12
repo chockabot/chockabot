@@ -1,0 +1,38 @@
+#!/usr/bin/env python
+
+import Queue
+import rospy
+from std_msgs.msg import String
+from flask import Flask, render_template, request, url_for
+
+pub = None
+
+# Initialize the Flask application
+app = Flask(__name__)
+
+# Define a route for the default URL, which loads the form
+@app.route('/')
+def form():
+    return render_template('form_submit.html')
+
+
+@app.route('/itemRequest/', methods=['POST'])
+def itemRequest():
+    item = request.form['item']
+    location = request.form['location']
+    return render_template('form_submit.html', item=item, location=location)
+
+    # Now that we've informed the user, publish the item
+    # to a topic so our robot can run it
+    global pub
+    pub.publish(str.format('{0}\t{1}', item, location))
+
+
+# Run the app
+if __name__ == '__main__':
+    pub = rospy.Publisher('item_requests', String, queue_size=0)
+    rospy.init_node('web_app')
+    app.run(
+            host="0.0.0.0",
+            port=int("33333")
+    )

@@ -1,0 +1,8 @@
+#goal definition
+int32 finished
+---
+#result definition
+int32 done
+---
+#feedback
+int32 counter
