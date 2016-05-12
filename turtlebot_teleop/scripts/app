@@ -1,11 +1,16 @@
-#!/usr/bin/env python
-
+from flask import Flask, render_template, request, url_for, flash
 import Queue
-import rospy
-from std_msgs.msg import String
-from flask import Flask, render_template, request, url_for
+# import rospy
+# from std_msgs.msg import String
 
 pub = None
+
+# Reuqests are stored in the dictionary in the following way:
+# Requester name -> (item, location, number in queue, completed)
+# Each request takes ~1 minute so the number in queue becomes the est wait time
+request_statuses = dict()
+
+queued_requests = 0
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -13,26 +18,75 @@ app = Flask(__name__)
 # Define a route for the default URL, which loads the form
 @app.route('/')
 def form():
-    return render_template('form_submit.html')
+    return render_template('form_submit.html', name='')
 
-
+    
 @app.route('/itemRequest/', methods=['POST'])
 def itemRequest():
     item = request.form['item']
     location = request.form['location']
-    return render_template('form_submit.html', item=item, location=location)
-
+    name = request.form['name']
+    
     # Now that we've informed the user, publish the item
     # to a topic so our robot can run it
-    global pub
-    pub.publish(str.format('{0}\t{1}', item, location))
+    
+    if name not in request_statuses:
+        # add one to the queue count
+        global queued_requests
+        queued_requests += 1
+        request_statuses[name] = (item, location, queued_requests, False)
+        
+        # global pub
+        # pub.publish(str.format('{0}\t{1}\t{2}', name, item, location))
+    
+    return render_template('form_submit.html', item=item, location=location, name=name)
+    
+@app.route('/show_status/<name>', methods=['GET'])
+def show_status(name):
+    if name not in request_statuses:
+        return "Error no requests for %s" % name
+    _, _, request_num, completed = request_statuses[name]
+    if completed:
+        return "Job Complete"
+    else:
+        return "Estimated time remaining: %s minute(s)" % str(request_num)
 
+@app.route('/end_request/<name>', methods=['POST'])
+def end_request(name):
+    if name not in request_statuses:
+        flash('Your request could not be found!')
+        return render_template('form_submit.html', name='')
+    
+    item, location, queue_num, completed = request_statuses[name]
+    if not completed:
+        flash('Your request has not completed yet!')
+        return render_template('form_submit.html', name=name, item=item, location=location)
+    
+    del request_statuses[name]
+    
+    global queued_requests
+    queued_requests -= 1
+    
+    for key in request_statuses:
+        req_item, req_loc, req_num, req_complete = request_statuses[key]
+        request_statuses[key] = (req_item, req_loc, req_num-1, req_complete)
+        
+    flash("Thank you for picking up your item!")
+    return render_template('form_submit.html', name='')
+        
 
 # Run the app
 if __name__ == '__main__':
-    pub = rospy.Publisher('item_requests', String, queue_size=0)
-    rospy.init_node('web_app')
-    app.run(
+    global pub
+    
+    # Publish requests to the channel in the string representation of:
+    # Requester name      item      location
+    # where the delimeter is a tab. The requester name becomes the key
+    # for the request, as each requester can only have one outstanding request
+    # pub = rospy.Publisher('item_requests', String, queue_size=0)
+    
+    # rospy.init_node('web_app')
+    app.run( 
             host="0.0.0.0",
             port=int("33333")
     )
