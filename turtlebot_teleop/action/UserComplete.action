@@ -1,8 +1,8 @@
 #goal definition
-int32 finished
+string job
 ---
 #result definition
-int32 done
+int32 suceeded
 ---
 #feedback
-int32 counter
+int32 count
