@@ -67,7 +67,7 @@ def callback(data):
     currently_moving = False
     
 if __name__=="__main__":
-    global move_client
+    # DO NOT PUT global move_client here IT IS NOT NEEDED AND CAUSES AN ERROR
 
     rospy.init_node("turtlebot_feducial_2")
     
