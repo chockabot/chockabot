@@ -61,15 +61,24 @@ int speed = 10;
 void callback( const std_msgs::Int32& pos)
 {
   // publishes info
-  info.data = "in callback";
+  info.data = "in callback ..target val newval = :";
   pub_info.publish(&info);
   nh.spinOnce();
 
   
   // converts string to int.
   target_value = pos.data;
-  newVal = map(target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN); //Map String value to sensor value.
+  // publishes info
+  info.data = String(target_value);
+  pub_info.publish(&info);
+  nh.spinOnce();
 
+  newVal = map(target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN); //Map String value to sensor value.
+  
+  info.data = String(newval);
+  pub_info.publish(&info);
+  nh.spinOnce();
+  
   //use the writeMicroseconds to write the target value to the linear actuator.
   linear_acutator.writeMicroseconds(newVal);
   
