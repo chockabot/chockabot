@@ -36,6 +36,7 @@
                         <input type="submit" value="Complete Job"/>
                     </form>
                 </div>
+                <div id="spin" class="spinner"></div>
             {% else %}
             <div class="title">
                 <h1>Materials request form</h1>
@@ -74,12 +75,14 @@
             if (http.readyState == 4) {
                 response = http.responseText;
                 document.getElementById("waittime").innerHTML = response
-                if (response != "Job Complete") {
+                if (response != "Your item is ready at its destination!") {
                     document.getElementById("complete").style.visibility = "hidden";
+                    document.getElementById("spin").style.visibility = "visible";
                     setTimeout("sendRequest()", 1000);
                 }
                 else {
                     document.getElementById("complete").style.visibility = "visible";
+                    document.getElementById("spin").style.visibility = "hidden";
                 }
             }
         }

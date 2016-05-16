@@ -2,6 +2,44 @@
 ::moz-selection{ background-color: #E13300; color: white; }
 ::webkit-selection{ background-color: #E13300; color: white; }
 
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: solid #DB73D7;
+  border-width: 3px 0px 0px 0px;
+ 
+  -webkit-border-radius: 50%;
+     -moz-border-radius: 50%;
+          border-radius: 50%;
+ 
+  -webkit-animation: spin 0.9s infinite linear;
+     -moz-animation: spin 0.9s infinite linear;
+       -o-animation: spin 0.9s infinite linear;
+          animation: spin 0.9s infinite linear;
+}
+ 
+@-webkit-keyframes spin {
+  from {-webkit-transform: rotate(0deg);}
+  to   {-webkit-transform: rotate(359deg);}
+}
+ 
+@-moz-keyframes spin {
+  from {-moz-transform: rotate(0deg);}
+  to   {-moz-transform: rotate(359deg);}
+}
+ 
+@-o-keyframes spin {
+  from {-o-transform: rotate(0deg);}
+  to   {-o-transform: rotate(359deg);}
+}
+ 
+@keyframes spin{
+  from {transform: rotate(0deg);}
+  to   {transform: rotate(359deg);}
+}
+
+
+
 body {
     font-family: "Helvetica Neue",Helvetica,Arial,"Lucida Grande",sans-serif;
     color: #888;
@@ -104,3 +142,4 @@ form input[type=submit]{
     cursor: pointer;
     text-align: center;
 } 
+
