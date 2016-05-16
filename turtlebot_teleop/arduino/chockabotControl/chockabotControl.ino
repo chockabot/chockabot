@@ -38,7 +38,7 @@
 
 //Pin Definition
 #define LINEAR_PIN_OUT 10        //Linear Actuator Digital Pin out
-#define LINEAR_PIN_IN  10        //Linear Actuator Digital Pin in
+#define LINEAR_PIN_IN  0        //Linear Actuator Digital Pin in
 
 //max/min pulse values in microseconds for the linear actuators
 #define LINEAR50_MIN  1050
@@ -46,12 +46,15 @@
 
 ros::NodeHandle nh;
 
+void callback( const std_msgs::Byte& pos);
+
 std_msgs::Byte cur_pos; // the current position of the linear actuator.
 ros::Publisher pub("linear_actuator_position",&cur_pos); // the published current position
 ros::Subscriber<std_msgs::Byte> sub("linear_actuator_input", &callback); // the desired position for the actuator.
 
 Servo linear_acutator;
 byte target_value = LINEAR50_MIN;
+byte newVal;
 int speed = 10;
 
 void setup() 
@@ -60,7 +63,7 @@ void setup()
   linear_acutator.attach(LINEAR_PIN_OUT, LINEAR50_MIN, LINEAR50_MAX);  // attaches/activates the linear actuator as a servo object 
   
   //use the writeMicroseconds to set the linear actuators to their initial position
-  linear_acutator.writeMicroseconds(target_value);
+  linear_acutator.writeMicroseconds(target_value + 50);
 
   // initialis ROS
   nh.initNode();
@@ -70,31 +73,35 @@ void setup()
   // initializes pins for reading from the actuator.
   pinMode(LINEAR_PIN_IN,  INPUT);
 
-  // delays and sets the current value of the actuator.
-  delay(100);
-  cur_pos.data = digitalRead(LINEAR_PIN_IN);
+  delay(1000);
 } 
 
 void loop() 
 { 
   // gets the current position through the actuator pin.
-  cur_pos.data = digitalRead(LINEAR_PIN_IN);
+  cur_pos.data = analogRead(LINEAR_PIN_IN);
+  
+  //might have to do this to map analog read value to a byte
+  //int val = analogRead(0);
+  //val = map(val, 0, 1023, 0, 255);
   
   pub.publish(&cur_pos); // publishes current position.
   
   nh.spinOnce(); // all ROS communication is handled here.
+  nh.spinOnce();
   delay(1000);
 } 
 
-void messageCb( const std_msgs::Byte& pos){
+void callback( const std_msgs::Byte& pos)
 {
   target_value = pos.data;
-  newVal = map(target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN); //Map analog value from the sensor to the linear actuator
-  
+  newVal = map(target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN); //Map byte value to sensor value.
+
   //use the writeMicroseconds to write the target value to the linear actuator.
   linear_acutator.writeMicroseconds(newVal);
   
   nh.spinOnce(); // all ROS communication is handled here.
   delay(1000);
 }
+
 
