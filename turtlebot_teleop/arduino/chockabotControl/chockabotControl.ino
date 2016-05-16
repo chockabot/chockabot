@@ -69,13 +69,20 @@ void callback( const std_msgs::Int32& pos)
   // converts string to int.
   target_value = pos.data;
   // publishes info
-  info.data = String(target_value);
+  
+  String str = String(target_value);
+  char charBuf[str.length() + 1];
+  str.toCharArray(charBuf, str.length()) 
+  info.data = charBuf;
   pub_info.publish(&info);
   nh.spinOnce();
 
   newVal = map(target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN); //Map String value to sensor value.
   
-  info.data = String(newval);
+  String str = String(newVal);
+  char charBuf[str.length() + 1];
+  str.toCharArray(charBuf, str.length()) 
+  info.data = charBuf;
   pub_info.publish(&info);
   nh.spinOnce();
   
