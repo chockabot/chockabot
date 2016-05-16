@@ -1,0 +1,11 @@
+1. on turtlebot:
+
+	plug in arduino into right front usb
+	
+	run `sudo chmod 777 /dev/ttyACM0`
+	
+	~~ arduino should already have the code, if it needs to be uploaded, run `sudo arduino` and upload it through the arduino software ~~
+	
+	run `rosrun rosserial_python serial_node.py /dev/ttyACM0`
+	
+	now its setup. publish to "/linear_actuator_input" and subscribe to "/linear_actuator_position".
