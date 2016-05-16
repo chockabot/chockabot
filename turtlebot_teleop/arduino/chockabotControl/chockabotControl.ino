@@ -33,7 +33,7 @@
  *
  ***********************************************************************************/
 #include <ros.h>
-#include <std_msgs/Byte.h>
+#include <std_msgs/String.h>
 #include <Servo.h> 
 
 //Pin Definition
@@ -46,11 +46,32 @@
 
 ros::NodeHandle nh;
 
-void callback( const std_msgs::Byte& pos);
+std_msgs::String cur_pos; // the current position of the linear actuator.
+std_msgs::String info;
 
-std_msgs::Byte cur_pos; // the current position of the linear actuator.
 ros::Publisher pub("linear_actuator_position",&cur_pos); // the published current position
-ros::Subscriber<std_msgs::Byte> sub("linear_actuator_input", &callback); // the desired position for the actuator.
+ros::Publisher pub_info("linear_actuator_info",&info); // the published current position
+
+void callback( const std_msgs::String& pos)
+{
+  // publishes info
+  info.data = "in callback";
+  pub_info.publish(&info);
+  nh.spinOnce();
+
+  
+  // converts string to int.
+  target_value = pos.data.toInt();
+  newVal = map(target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN); //Map String value to sensor value.
+
+  //use the writeMicroseconds to write the target value to the linear actuator.
+  linear_acutator.writeMicroseconds(newVal);
+  
+  nh.spinOnce(); // all ROS communication is handled here.
+  delay(1000);
+}
+
+ros::Subscriber<std_msgs::String> sub("linear_actuator_input", &callback); // the desired position for the actuator.
 
 Servo linear_acutator;
 byte target_value = LINEAR50_MIN;
@@ -89,19 +110,11 @@ void loop()
   
   nh.spinOnce(); // all ROS communication is handled here.
   nh.spinOnce();
+  nh.spinOnce(); // all ROS communication is handled here.
+  nh.spinOnce();
+  
   delay(1000);
 } 
 
-void callback( const std_msgs::Byte& pos)
-{
-  target_value = pos.data;
-  newVal = map(target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN); //Map byte value to sensor value.
-
-  //use the writeMicroseconds to write the target value to the linear actuator.
-  linear_acutator.writeMicroseconds(newVal);
-  
-  nh.spinOnce(); // all ROS communication is handled here.
-  delay(1000);
-}
 
 
