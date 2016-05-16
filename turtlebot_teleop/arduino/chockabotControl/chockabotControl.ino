@@ -33,7 +33,6 @@
  *
  ***********************************************************************************/
 #include <ros.h>
-#include <std_msgs/String.h>
 #include <std_msgs/Int32.h>
 #include <Servo.h> 
 
@@ -47,70 +46,31 @@
 
 ros::NodeHandle nh;
 
-std_msgs::Int32 cur_pos; // the current position of the linear actuator.
-std_msgs::String info;
+std_msgs::Int32 cur_pos; // the current position of the linear actuator, will be published as a topic.
+
+void callback( const std_msgs::Int32& pos); // the callback declaration
 
 ros::Publisher pub("linear_actuator_position",&cur_pos); // the published current position
-ros::Publisher pub_info("linear_actuator_info",&info); // the published current position
+ros::Subscriber<std_msgs::Int32> sub("linear_actuator_input", &callback); // the desired position for the actuator.
 
 Servo linear_acutator;
-byte target_value = LINEAR50_MIN;
-byte newVal;
-int speed = 10;
-
-void callback( const std_msgs::Int32& pos)
-{
-  // publishes info
-  info.data = "in callback ..target val newval = :";
-  pub_info.publish(&info);
-  nh.spinOnce();
-
-  
-  // converts string to int.
-  target_value = pos.data;
-  // publishes info
-  
-  String str = String(target_value);
-  char charBuf[str.length() + 1];
-  str.toCharArray(charBuf, str.length()) 
-  info.data = charBuf;
-  pub_info.publish(&info);
-  nh.spinOnce();
-
-  newVal = map(target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN); //Map String value to sensor value.
-  
-  String str = String(newVal);
-  char charBuf[str.length() + 1];
-  str.toCharArray(charBuf, str.length()) 
-  info.data = charBuf;
-  pub_info.publish(&info);
-  nh.spinOnce();
-  
-  //use the writeMicroseconds to write the target value to the linear actuator.
-  linear_acutator.writeMicroseconds(newVal);
-  
-  nh.spinOnce(); // all ROS communication is handled here.
-  delay(1000);
-}
-
-ros::Subscriber<std_msgs::Int32> sub("linear_actuator_input", &callback); // the desired position for the actuator.
+int target_value = LINEAR50_MIN;
 
 void setup() 
 { 
+  // initializes pin for reading from the actuator.
+  pinMode(LINEAR_PIN_IN,  INPUT);
+  
   //initialize linear actuator
   linear_acutator.attach(LINEAR_PIN_OUT, LINEAR50_MIN, LINEAR50_MAX);  // attaches/activates the linear actuator as a servo object 
   
   //use the writeMicroseconds to set the linear actuators to their initial position
-  linear_acutator.writeMicroseconds(target_value + 50);
+  linear_acutator.writeMicroseconds(target_value);
 
-  // initialis ROS
+  // initialis ROS publishers and subscribers
   nh.initNode();
   nh.advertise(pub);
-  nh.advertise(pub_info);
   nh.subscribe(sub);
-
-  // initializes pins for reading from the actuator.
-  pinMode(LINEAR_PIN_IN,  INPUT);
 
   delay(1000);
 } 
@@ -118,21 +78,34 @@ void setup()
 void loop() 
 { 
   // gets the current position through the actuator pin.
-  cur_pos.data = analogRead(LINEAR_PIN_IN);
+  int analogValue = analogRead(LINEAR_PIN_IN);
   
-  //might have to do this to map analog read value to a byte
-  //int val = analogRead(0);
-  //val = map(val, 0, 1023, 0, 255);
+  //Map analog input value (0-360) to a value representative of the input value (0-255). 
+  cur_pos.data = map(analogValue, 10, 360, 255, 0);
   
   pub.publish(&cur_pos); // publishes current position.
   
-  nh.spinOnce(); // all ROS communication is handled here.
+  // all ROS communication (publishing, callbacks) is handled here.
   nh.spinOnce();
-  nh.spinOnce(); // all ROS communication is handled here.
+  nh.spinOnce();
+  nh.spinOnce();
   nh.spinOnce();
   
   delay(1000);
 } 
 
+void callback( const std_msgs::Int32& pos)
+{
+  target_value = pos.data;
+  
+  //Map input value (0-255) to sensor value.
+  int newVal = map(255 - target_value, 0, 255, LINEAR50_MAX, LINEAR50_MIN);
+    
+  //use the writeMicroseconds to write the target value to the linear actuator.
+  linear_acutator.writeMicroseconds(newVal);
+  
+  nh.spinOnce(); // all ROS communication is handled here.
+  delay(1000);
+}
 
 
