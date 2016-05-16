@@ -1,8 +1,14 @@
+
+<!DOCTYPE html>
 <html>
     <head>
         <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
     </head>
+    {% if name %}
+    <body onload="sendRequest()">
+    {% else %}
     <body>
+    {% endif %}
         {% with messages = get_flashed_messages() %}
             {% if messages %}
                 <ul class=flashes>
@@ -19,10 +25,11 @@
                 </div>
                 <div id="content">
                     We are sending item: <strong>{{item}}</strong> <br />
-                    To location: <strong> ({{location}}) </strong>
+                    To location: <strong> {{location}} </strong>
                 </div>
                 <div>
                     <h2>Please wait while we complete your request.</h2><br />
+                    <h3 id="waittime">t</h3><br />
                     <div id="loading">
                         <div class="cssload-dots">
                             <div class="cssload-dot"></div>
