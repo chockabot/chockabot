@@ -1,46 +1,20 @@
-
-
-/***********************************************************************************
- *           RobotGeek Firgelli Linear Actuator Control Demo   
- *           Absolute Analog Control                
- * 
- *
- *  The following sketch will allow you to control a Firgelli Linear actuator using
- *  the RobotGeek Slider and RobotGeek Knob
- *
- *  Products
- *  
- *    http://www.robotgeek.com/robotgeek-geekduino-sensor-kit
- *    http://www.robotgeek.com/robotgeek-slider
- *    http://www.robotgeek.com/robotgeek-rotation-knob
- *    http://www.robotgeek.com/p/power-supply-6vdc-2a.aspx
- *    Firgelli Mini Linear Actuators http://www.robotgeek.com/store/Search.aspx?SearchTerms=firgelli
- *    http://www.robotgeek.com/robotgeek-small-workbench.aspx
+/* Chockabot Control arduino node
+ * This node will be responsible for controlling the 
+ * linear actuator. it publishes a topic "/linear_actuator_position"
+ * showing the current position of the actuator as a value in the range [0,255]
+ * and accepts target position by subscribing to "/linear_actuator_input", where
+ * if something is published to this it will move to the desired position.
+ */
  
- *  Wiring
- *    100mm Linear Actuator - Digital Pin 9 
- *    50mm Linear Actuator - Digital Pin 10 
- *
- *    Knob   - Analog Pin 0
- *    Slider - Analog Pin 1 
- *    Jumper for pins 9/10/11 should be set to 'VIN'
- *  
- *
- *  Control Behavior:
- *    Moving the analog controls will move the linear actuators keeping absolute position.
- *
- *  External Resources
- *
- ***********************************************************************************/
 #include <ros.h>
 #include <std_msgs/Int32.h>
 #include <Servo.h> 
 
-//Pin Definition
+//Pin Definitions
 #define LINEAR_PIN_OUT 10        //Linear Actuator Digital Pin out
-#define LINEAR_PIN_IN  0        //Linear Actuator Digital Pin in
+#define LINEAR_PIN_IN  0        //Linear Actuator Analog Pin in
 
-//max/min pulse values in microseconds for the linear actuators
+//max/min pulse values in microseconds for the linear actuators defined from datasheet
 #define LINEAR50_MIN  1050
 #define LINEAR50_MAX  2000
 
@@ -50,11 +24,11 @@ std_msgs::Int32 cur_pos; // the current position of the linear actuator, will be
 
 void callback( const std_msgs::Int32& pos); // the callback declaration
 
-ros::Publisher pub("linear_actuator_position",&cur_pos); // the published current position
-ros::Subscriber<std_msgs::Int32> sub("linear_actuator_input", &callback); // the desired position for the actuator.
+ros::Publisher pub("linear_actuator_position",&cur_pos); // the current position publisher
+ros::Subscriber<std_msgs::Int32> sub("linear_actuator_input", &callback); // Subscriber to look for desired position for the actuator.
 
 Servo linear_acutator;
-int target_value = LINEAR50_MIN;
+int target_value = LINEAR50_MIN; // the target position of the actuator.
 
 void setup() 
 { 
@@ -64,7 +38,7 @@ void setup()
   //initialize linear actuator
   linear_acutator.attach(LINEAR_PIN_OUT, LINEAR50_MIN, LINEAR50_MAX);  // attaches/activates the linear actuator as a servo object 
   
-  //use the writeMicroseconds to set the linear actuators to their initial position
+  //use the writeMicroseconds to set the linear actuators to their initial position (LINEAR50_MIN)
   linear_acutator.writeMicroseconds(target_value);
 
   // initialis ROS publishers and subscribers
@@ -75,6 +49,10 @@ void setup()
   delay(1000);
 } 
 
+/*  Main loop of program publishes current position
+ *  and listens for topics to come in to tell it 
+ *  what position to move to.
+ */
 void loop() 
 { 
   // gets the current position through the actuator pin.
@@ -94,6 +72,14 @@ void loop()
   delay(1000);
 } 
 
+/* This callback is executed when someone publishes
+ *  to the "/linear_actuator_input" topic. the data published 
+ *  is an Int32 in the range (0-255) representing the desired position
+ *  of the actuator, where 0 is the lowest position and 255 is the highest.
+ *  They can then check the current position of the actuator by subscribing to
+ *  "/linear_actuator_position" where they can look at current position values
+ *  to tell where the actuator currently is.
+ */
 void callback( const std_msgs::Int32& pos)
 {
   target_value = pos.data;
