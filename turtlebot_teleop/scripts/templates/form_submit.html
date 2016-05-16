@@ -29,35 +29,14 @@
                 </div>
                 <div>
                     <h2>Please wait while we complete your request.</h2><br />
-                    <h3 id="waittime">t</h3><br />
-                    <div id="loading">
-                        <div class="cssload-dots">
-                            <div class="cssload-dot"></div>
-                            <div class="cssload-dot"></div>
-                            <div class="cssload-dot"></div>
-                            <div class="cssload-dot"></div>
-                            <div class="cssload-dot"></div>
-                        </div>
-
-                        <svg version="1.1" xmlns="http://www.w3.org/2000/svg">
-                            <defs>
-                                <filter id="goo">
-                                    <feGaussianBlur in="SourceGraphic" result="blur" stdDeviation="12" ></feGaussianBlur>
-                                    <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0	0 1 0 0 0	0 0 1 0 0	0 0 0 18 -7" result="goo" ></feColorMatrix>
-                                    <!--<feBlend in2="goo" in="SourceGraphic" result="mix" ></feBlend>-->
-                                </filter>
-                            </defs>
-                        </svg>
-                    </div>
-                    <h3  id="waittime"></h3>
-                    
+                    <h3 id="waittime"></h3>         
                 </div>
-                <div id="complete">
+                <div id="complete" style="visibility=hidden">
                     <form method="post" action="{{url_for('end_request', name=name)}}">
                         <input type="submit" value="Complete Job"/>
                     </form>
                 </div>
-            {% endif %}
+            {% else %}
             <div class="title">
                 <h1>Materials request form</h1>
             </div>
@@ -67,18 +46,19 @@
                   <input type="text" name="name" /><br />
                   <label for="item">Item Needed:</label>
                   <select name="item">
-                      <option value="Condoms">condoms</option>
-                      <option value="MoreCondoms">More Condoms</option>
+                      <option value="Medicine">Medicine</option>
+                      <option value="Dressings">Dressings</option>
                   </select>
                   <br />
                   <label for="location">Dropoff location:</label>
                   <select name="location">
-                      <option value="mourge">Mourge</option>
-                      <option value="orphanage">Orphanage</option>
+                      <option value="502">Room 502</option>
+                      <option value="503">Room 503</option>
                   </select>
                   <input type="submit" />
                 </form>
             </div>
+            {% endif %}
         </div>
         
     <script>
@@ -95,10 +75,10 @@
                 response = http.responseText;
                 document.getElementById("waittime").innerHTML = response
                 if (response != "Job Complete") {
+                    document.getElementById("complete").style.visibility = "hidden";
                     setTimeout("sendRequest()", 1000);
                 }
                 else {
-                    document.getElementById("loading").style.visibility = "hidden"
                     document.getElementById("complete").style.visibility = "visible";
                 }
             }
