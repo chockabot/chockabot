@@ -153,6 +153,8 @@ def load_locs(file_name):
     return loaded_locs
 
 if __name__=="__main__":
+    rospy.init_node('chockabot_brain')
+
     load_items()
     load_dest()
     
