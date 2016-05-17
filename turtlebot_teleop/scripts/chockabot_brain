@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+
+import rospy
+import actionlib
+
+
+import turtlebot_teleop.msg
+from std_msgs.msg import String
+from geometry_msgs.msg import Point, PoseStamped, Pose, Quaternion
+
+import sys, select, termios, tty, Queue
+
+ACTION_ACTIVE = 1
+ACTION_ABORTED = 4
+ACTION_SUCCEEDED = 3
+
+cancel_list = []
+items_loc = {}
+dest_loc = {}
+home_timer = None
+complete_action = None
+items_file = 'items.txt'
+dest_file = 'dest.txt'
+
+
+# callback to handle added canceled jobs
+def cancel_callback(data):
+    global cancel_list
+    cancel_list.append(data)    
+
+# callback to handle if it runs into an object.
+def job_callback(data):
+    global cancel_list, home_timer
+    rospy.loginfo(rospy.get_caller_id() + ' I heard a request for job=%s', data)
+
+    try:
+        # Extract request from received data
+        name, item, destination = data.split('\t')
+        
+        # Verify the item and location exist
+        dest_found = destination in dest_loc
+        item_found = item in item_loc
+        
+        if dest_found and item_found:            
+            # If the job has been requested to be cancelled then remove item
+            # Do not execute the job
+            if name in cancel_list:
+                cancel_list.remove(name)
+                rospy.loginfo(rospy.get_caller_id() + 'Job for %s was cancelled.', name)
+                
+            # Else execute the job
+            else:
+                if home_timer:
+                    home_timer.cancel()
+                execute_job(name, item, destination)
+                
+                # Create a new timer
+                home_timer = create_home_timer()
+        else:
+            # Print an error if the item or location is not found
+            not_found = 'Item' if not item_found else 'Location'
+            not_found += ' and Location' if not dest_found and not item_found else ''
+            rospy.logerr(rospy.get_caller_id() + ' %s not found.' , not_found)
+    
+    # Log an error if we have a problem reading the job from the subscription
+    except Exception as e:
+        rospy.loginfo(rospy.get_caller_id() + ' Unable to Read: job request not in correct format %s', e)
+        
+# job execution method
+def execute_job(name, item, destination):
+    global complete_action
+
+    # STEP 1: Go to the item location
+    item_goal = MoveBaseGoal()
+    item_goal.target_pose = dest_loc[item]
+    move_client.send_goal(item_goal)
+    move_client.wait_for_result()
+    # STEP 2: Align with Fiducial
+        # TODO(Cody) Call Fiducial alignment service
+    # STEP 3: Use arm to get object
+        # TODO(Cody) Call arm grabbing service
+    # STEP 4: Go to destination location
+    dest_goal = MoveBaseGoal()
+    dest_goal.target_pose = dest_loc[destination]
+    move_client.send_goal(dest_goal)
+    move_client.wait_for_result()
+    # STEP 5: Send JobCompletionNotification Action (wait for completion)
+    complete_action.wait_for_server()
+    goal = turtlebot_teleop.msg.UserCompleteGoal(job=name)
+    complete_action.send_goal(goal)
+    client.wait_for_result()
+
+    if client.get_result():
+        rospy.loginfo(rospy.get_caller_id() + ' finished job for %s', name)
+    else:
+        rospy.loginfo(rospy.get_caller_id() + ' did not finish job for %s', name)        
+
+def create_home_timer():
+    global home_timer
+    if home_timer:
+        home_timer.cancel()
+    HOMING_PERIOD = 10
+    
+    # Create a new timer
+    home_timer = rospy.Timer(HOMING_PERIOD, go_home_youre_drunk, True)
+    
+def go_home_youre_drunk(feedback):
+    global move_client
+    rospy.logerr(rospy.get_caller_id() + ' timed out and headed home')
+    home_goal = MoveBaseGoal()
+    home_goal.target_pose = dest_loc['home']
+    # home_goal.target_pose.header.frame_id = ???
+    move_client.send_goal(home_goal)
+    move_client.wait_for_result()
+    
+    # Checks the status of the goal. 
+    if (move_client.get_state() == ACTION_SUCCEEDED):
+        # Robot made it home safe and sound, fingers crossed no hangover
+        rospy.logerr(rospy.get_caller_id() + ' is home')
+    else:
+        # Robot was too drunk to make it home
+        rospy.logerr(rospy.get_caller_id() + ' did not make it home')
+    
+def load_items():
+    global items_file
+    items_loc = load_data(items_file)
+    
+def load_dest():
+    global dest_file
+    dest_loc = load_data(dest_file)
+    
+def load_locs(file_name):
+    loaded_locs = {}
+    try:
+        f = open(value, 'r')
+        new_locs = json.loads( f.read() )
+        f.close()
+        
+        for data_name in new_locs.keys():
+            pose_data = new_locs[data_name]
+            
+            loc_pose = Pose()
+            loc_pose.location = Point(pose_data[0][0], pose_data[0][1], 0)
+            if pose_data[1]:
+                loc_pose.orientation.z = pose_data[1][0]
+                loc_pose.orientation.w = pose_data[1][1]
+                
+            loaded_locs[data_name] = loc_pose
+            
+    except Exception as e:
+        rospy.loginfo('Could not load from file %s: %s' % (value, e))
+        
+    return loaded_locs
+
+if __name__=="__main__":
+    load_items()
+    load_dest()
+    
+    complete_action = actionlib.SimpleActionClient('web_app', turtlebot_teleop.msg.UserComplete)
+    create_home_timer()
+
+    job_sub = rospy.Subscriber('item_requests', String, job_callback)
+    # cancel_sub = rospy.Subscriber('item_cancellations', String, cancel_callback)
+    
+    rospy.spin()
+    
+    
+    
