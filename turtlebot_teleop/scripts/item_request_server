@@ -8,9 +8,14 @@ from move_base_msgs.msg import MoveBaseActionGoal
 items = dict()
 locations = dict()
 client = None
+completed_job = ""
 
 def callback(data):
     item, location = data.data.split('\t')
+    
+def completed_callback(data)
+    global completed_job
+    completed_job = data.data
 
 def action_client():
     global client
@@ -37,4 +42,5 @@ def process_goal(item, location):
 if __name__ == "main":
     rospy.init_node('item_request_server')
     rospy.Subscriber('item_requests', String, callback)
+    rospy.Subscriber('item_request_completions', String, completed_callback)
     rospy.spin()
