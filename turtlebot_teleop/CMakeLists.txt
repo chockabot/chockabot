@@ -2,15 +2,40 @@ cmake_minimum_required(VERSION 2.8.3)
 project(turtlebot_teleop)
 
 ## Find catkin macros and libraries
-find_package(catkin REQUIRED COMPONENTS roscpp geometry_msgs joy)
+find_package(catkin REQUIRED COMPONENTS 
+  roscpp
+  geometry_msgs
+  joy
+  rospy
+  std_msgs
+  actionlib_msgs
+  message_generation
+)
 
 include_directories(${catkin_INCLUDE_DIRS})
 
+
+add_service_files(
+  FILES
+  GetBin.srv
+)
+
+# ADDED:
+add_action_files(
+  DIRECTORY action
+  FILES UserComplete.action
+)
+
+generate_messages(
+  DEPENDENCIES actionlib_msgs std_msgs  # Or other packages containing msgs
+)
+
 catkin_package(
   INCLUDE_DIRS
-  CATKIN_DEPENDS roscpp geometry_msgs joy
+  CATKIN_DEPENDS roscpp geometry_msgs joy message_runtime actionlib_msgs
   DEPENDS
 )
+
 
 ###########
 ## Build ##

@@ -1,0 +1,24 @@
+#!/usr/bin/env python
+
+import rospy
+import math
+from actionlib import SimpleActionClient
+from std_msgs.msg import String
+from turtlebot_teleop.srv import GetBin, GetBinRequest, GetBinResponse
+from ar_track_alvar_msgs.msg import AlvarMarkers
+from move_base_msgs.msg import MoveBaseActionGoal, MoveBaseActionFeedback, MoveBaseActionResult, MoveBaseAction, MoveBaseGoal, MoveBaseResult
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+
+def get_bin_client():
+    rospy.wait_for_service('get_bin')
+    try:
+        fiducal = 0
+        print 'requesting fiducial ', fiducal, '...'
+        get_bin = rospy.ServiceProxy('get_bin', GetBin)
+        res = get_bin(fiducal)
+        print 'result: ', res.result
+    except rospy.ServiceException, e:
+        print "Service call failed: %s"%e
+        
+if __name__ == "__main__":
+    get_bin_client()

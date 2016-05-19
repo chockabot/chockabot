@@ -1,81 +1,179 @@
 #!/usr/bin/env python
 
 import rospy
-
+import math
 from actionlib import SimpleActionClient
+from std_msgs.msg import String
+from turtlebot_teleop.srv import GetBin, GetBinRequest, GetBinResponse
 from ar_track_alvar_msgs.msg import AlvarMarkers
 from move_base_msgs.msg import MoveBaseActionGoal, MoveBaseActionFeedback, MoveBaseActionResult, MoveBaseAction, MoveBaseGoal, MoveBaseResult
-from tf.transformations import euler_from_quaternion
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
+# the distance from the fiducial to send the goal to.
+DISTANCE_FROM_FIDUCIAL = 0.5
+
+ # possible states
+STATE_START_SET = 0
+STATE_ADVANCING_TO_BIN = 1
+# STATE_PICKING_UP_BIN = 2
+# STATE_REVERSING_FROM_BIN = 3
+STATE_DONE = 4
+STATE_ERROR = 5
+
+# constants representing goal
 ACTION_ACTIVE = 1
 ACTION_ABORTED = 4
 ACTION_SUCCEEDED = 3
 
-# the distance that the turtlebot should be in front of the fiducial when it stops.
-DISTANCE_FROM_FIDUCIAL = 0.5
+# results for the service calls.
+RESULT_SUCCESS = 1
+RESULT_FAILURE = 0
 
-cur_pose = None
-move_client = None
-currently_moving = False
-
-def callback(data):
-    global currently_moving
+class FiducialServer():
     
-    # If it is already running a goal, wait until it's done.
-    if currently_moving:
-        return
+    # the distance that the turtlebot should be in front of the fiducial when it stops.
+    DISTANCE_FROM_FIDUCIAL = 0.6
+    
+    def __init__(self):
+        self.ignore_callback = True
+        self.state = STATE_START_SET
+        self.bin_no = None
+        self.result = None
         
-    # to be used later, when we may have multiple feducials seen at once.
-    num_markers = len(data.markers)
-    if not num_markers:
-        # print 'no fiducials seen.'
-        return
-    else:
-        currently_moving = True
-                
-    # currently just aligns with the first marker in the sequence
-    new_pose = data.markers[0].pose.pose
-    
-    # creates the goal and assigns the position and orientation
-    # currently, the robot will drive toward the fidoucheal until it is
-    # exactly DISTANCE_FROM_FIDUCIAL away and orientate itself directly
-    # toward the fiducial.
-    new_goal = MoveBaseGoal()
-    
-    # assigns position
-    new_goal.target_pose.pose.position.x = new_pose.position.x - DISTANCE_FROM_FIDUCIAL
-    new_goal.target_pose.pose.position.y = new_pose.position.y
-    
-    # assigns the orientation - currently just looks toward the fiducial.
-    # TODO - figure out how to assign the orientation so it faces directly on line with the bins.
-    new_goal.target_pose.pose.orientation.w = new_pose.orientation.w
-    new_goal.target_pose.pose.orientation.z = new_pose.orientation.z
-    
-    # makes everything relative to 'base link' - THIS FRAME MUST BE THE OUTPUT FRAME specified in the turtlebot_fiducials_2.launch file
-    new_goal.target_pose.header.frame_id = 'base_link'
-    
-    print 'sending goal'
-    move_client.send_goal(new_goal)
-    move_client.wait_for_result()
-    
-    # Checks the status of the goal. 
-    if (move_client.get_state() == ACTION_SUCCEEDED):
-        print 'action succeeded'
-    else:
-        print "action didn't succeed"
-    
-    currently_moving = False
-    
-if __name__=="__main__":
-    # DO NOT PUT global move_client here IT IS NOT NEEDED AND CAUSES AN ERROR
+        rospy.init_node("turtlebot_feducial_2")
 
-    rospy.init_node("turtlebot_feducial_2")
-    
-    move_client = SimpleActionClient('move_base', MoveBaseAction)
-    print 'waiting for server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch` on the robot.'
-    move_client.wait_for_server()
-    
-    # subscribes to the topic giving us the markers and their positions.
-    print 'subscribing to ar_pose_marker topic... if it doesnt continue, run `roslaunch turtlebot_teleop alvar.launch` on computer.'
-    rospy.Subscriber('ar_pose_marker', AlvarMarkers, callback)
-    rospy.spin()
+        self.move_client = SimpleActionClient('move_base', MoveBaseAction)
+        print 'waiting for server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch` on the robot.'
+        self.move_client.wait_for_server()
+        
+        self.get_service = rospy.Service('get_bin', GetBin, self.get_bin)
+        # self.set_service = rospy.Service('set_bin', GetBin, self.set_bin)
+
+        # subscribes to the topic giving us the markers and their positions.
+        print 'subscribing to ar_pose_marker topic... if it doesnt continue, run `roslaunch turtlebot_teleop alvar.launch` on computer.'
+        rospy.Subscriber('ar_pose_marker', AlvarMarkers, self.ar_marker_callback, queue_size=1)
+        rospy.spin()
+        
+    # The service call to retrieve a bin from a shelf.
+    def get_bin(self, bin_request):
+        self.bin_no = bin_request.bin
+        
+        # allows the callback to advance states.
+        self.ignore_callback = False
+        while (self.state != STATE_DONE): # when the state is done, the return value is in self.result
+            rospy.sleep(0)
+            
+        self.ignore_callback = True # resets state and callback for next call.
+        self.state = STATE_START_SET
+        
+        return GetBinResponse(self.result)
+        
+    # the callback called when feducials are recognized.
+    def ar_marker_callback(self, data):
+        # If we should ignore for now, return.
+        if self.ignore_callback:
+            return
+            
+        self.ignore_callback = True # dont allow other callbacks while this is running.
+        
+        # checks the current state of a service to know what to do.
+        if self.state == STATE_START_SET:
+            self.line_up_robot(data)
+        elif self.state == STATE_ADVANCING_TO_BIN:
+            self.advance_to_bin(data)
+        # elif self.state = STATE_PICKING_UP_BIN: # this should be taken care of in the advancing.
+            self.pick_up_bin()
+        # elif self.state = STATE_REVERSING_FROM_BIN:
+            self.reverse_from_bin() # this method will finish the state machine by setting self.result and self.state to done.
+        else:
+            print 'Error: invalid state: ', self.state
+            
+        # since were leaving, we can allow the callback to execute again for the next state.
+        self.ignore_callback = False 
+        
+    # This method puts the robot at a fixed distance away and facing exactly toward the fiducial and directly in front of the fiducial.
+    def line_up_robot(self, data):
+        # checks that we can find markers
+        if not len(data.markers):
+            print 'target fiducial not seen yet..'
+            return
+            
+        target_marker = None
+        for m in data.markers:
+            if m.id == self.bin_no:
+                print 'found target marker (' + str(self.bin_no) + ') with ' + str(m.confidence), ' confidence level.'
+                target_marker = m
+                break
+                
+        if target_marker == None:
+            print 'Error: could not find target marker: ', self.bin_no
+            return
+        
+        self.ignore_callback = True # ignores the callback while we do stuff.
+                    
+        # currently just aligns with the first marker in the sequence
+        fiducial_pose = target_marker.pose.pose
+
+        # creates the goal and assigns the position and orientation.
+        new_goal = MoveBaseGoal()
+
+        # calculates the needed 'roll' (roll of the ar pose marker is actually the yaw of the robot) to determine which way the fiducial is facing.
+        yaw = euler_from_quaternion((fiducial_pose.orientation.x, fiducial_pose.orientation.y, fiducial_pose.orientation.z, fiducial_pose.orientation.w))[0]
+                    
+        # # the new goal's position will be DISTANCE_FROM_FIDUCIAL away, lined up exactly facing toward the fiducial.
+        new_goal.target_pose.pose.position.y = -1 * ( fiducial_pose.position.x + (DISTANCE_FROM_FIDUCIAL * -1 * math.sin(yaw))) # multiplies by -1 because camera_rgb's -x is representavices of base link's x
+        new_goal.target_pose.pose.position.x = fiducial_pose.position.z + (DISTANCE_FROM_FIDUCIAL * math.cos(yaw)) # uses 'z' because camera_rgb's z is actually representative of base link's y.
+
+        # reverses orientation around to face the fiducial rather than face the same direction as the fiducial.
+        yaw += math.pi
+        if yaw > math.pi:
+            yaw -= 2 * math.pi
+        # print 'difference in angle between fiducial and robot:, ', yaw
+
+        # assigns the orientation to look directly toward fiducial  
+        new_goal.target_pose.pose.orientation.x = 0
+        new_goal.target_pose.pose.orientation.y = 0
+        quaternion = quaternion_from_euler(0, 0, yaw)
+        new_goal.target_pose.pose.orientation.z = quaternion[2]
+        new_goal.target_pose.pose.orientation.w = quaternion[3]
+
+        # makes everything in the goal relative to 'base link' - THIS FRAME is not THE OUTPUT FRAME specified in the alvar.launch file
+        new_goal.target_pose.header.frame_id = 'base_link'
+
+        print 'sending goal to line up the robot...'
+        self.move_client.send_goal(new_goal)
+        self.move_client.wait_for_result()
+
+        # Checks the status of the goal. 
+        if (self.move_client.get_state() == ACTION_SUCCEEDED):
+            print 'action to move robot succeeded.'
+            self.state = STATE_ADVANCING_TO_BIN
+        else:
+            self.fail("action to move robot failed.")
+        
+    # this method advances the robot slowly forward to the bin. it advances, stops, and makes sure it's in line with the fiducial.
+    def advance_to_bin(self, data):
+        print 'in state: advance to bin'
+        pass
+        
+    # this method controlls the linear actuator by lifting it up
+    def pick_up_bin(self):
+        print 'in state: pick up bin'
+        pass
+        
+    # this method reverses the robot away from the bin, and transitions the service call to finished.
+    # it will finish the state machine by setting self.result and self.state to done.
+    def reverse_from_bin(self):
+        print 'in state: reverse from bin'
+        pass
+        self.result = RESULT_FAILURE
+        self.state = STATE_DONE
+        
+    # this method
+    def fail(self, msg):
+        print 'failed: ', msg
+        self.result = RESULT_FAILURE
+        self.state = STATE_DONE
+        
+if __name__ == '__main__':
+    FiducialServer()
