@@ -2,6 +2,7 @@
 
 import rospy
 import math
+import time
 from actionlib import SimpleActionClient
 from std_msgs.msg import String
 from turtlebot_teleop.srv import GetBin, GetBinRequest, GetBinResponse
@@ -12,14 +13,6 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 # the distance that the turtlebot should be in front of the fiducial when it stops.
 DISTANCE_FROM_FIDUCIAL = 0.6
 
-# possible states
-STATE_START_SET = 0
-STATE_ADVANCING_TO_BIN = 1
-# STATE_PICKING_UP_BIN = 2
-# STATE_REVERSING_FROM_BIN = 3
-STATE_DONE = 4
-STATE_ERROR = 5
-
 # constants representing goal
 ACTION_ACTIVE = 1
 ACTION_ABORTED = 4
@@ -29,17 +22,22 @@ ACTION_SUCCEEDED = 3
 RESULT_SUCCESS = 1
 RESULT_FAILURE = 0
 
-# number of times to check for if it can't see the fiducial before quitting.
-NOT_SEEN_TIMEOUT = 5
+NOT_SEEN_TIMEOUT = 5 # number of seconds to wait until we fail if we haven't seen /ar_pose_marker topic
+NOT_SEEN_COUNT_TIMEOUT = 5 # number of times we should allow to not see our specific target
+
+PUBLISHER_QUEUE_SIZE = 20 # nubmer of cmd_vel Twist() objects we should hold in the queue.
+
+class ChockabotError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+    def __str__(self):
+        return repr(self.msg)
 
 class FiducialServer():
     
     def __init__(self):
         self.ignore_callback = True
-        self.state = STATE_START_SET
         self.bin_no = None
-        self.result = None
-        self.not_seen_count = 0
         rospy.init_node("turtlebot_feducial_2")
 
         self.move_client = SimpleActionClient('move_base', MoveBaseAction)
@@ -52,21 +50,25 @@ class FiducialServer():
         # subscribes to the topic giving us the markers and their positions.
         print 'subscribing to ar_pose_marker topic... if it doesnt continue, run `roslaunch turtlebot_teleop alvar.launch` on computer.'
         rospy.Subscriber('ar_pose_marker', AlvarMarkers, self.ar_marker_callback, queue_size=1)
+        
+        # publishes to the cmd_vel topic to controlt he robot.
+        self.cmd_vel = rospy.Publisher('~cmd_vel', Twist, queue_size=PUBLISHER_QUEUE_SIZE)
         rospy.spin()
         
     # The service call to retrieve a bin from a shelf.
     def get_bin(self, bin_request):
         self.bin_no = bin_request.bin
         
-        # allows the callback to advance states.
-        self.ignore_callback = False
-        while (self.state != STATE_DONE): # when the state is done, the return value is in self.result
-            rospy.sleep(0)
+        try:
+            self.line_up_robot()
+            self.advance_to_bin()
+            self.pick_up_bin()
+            self.reverse_from_bin()
+        except ChockabotError as e:
+            print 'Error: ' + e.msg
+            return GetBinResponse(RESULT_FAILURE)
             
-        self.ignore_callback = True # resets state and callback for next call.
-        self.state = STATE_START_SET
-        
-        return GetBinResponse(self.result)
+        return GetBinResponse(RESULT_SUCCESS)
         
     # the callback called when feducials are recognized.
     def ar_marker_callback(self, data):
@@ -74,59 +76,56 @@ class FiducialServer():
         if self.ignore_callback:
             return
             
-        self.ignore_callback = True # dont allow other callbacks while this is running.
-        
-        # checks the current state of a service to know what to do.
-        if self.state == STATE_START_SET:
-            self.line_up_robot(data)
-        elif self.state == STATE_ADVANCING_TO_BIN:
-            self.advance_to_bin(data)
-        # elif self.state = STATE_PICKING_UP_BIN: # this should be taken care of in the advancing.
-            self.pick_up_bin()
-        # elif self.state = STATE_REVERSING_FROM_BIN:
-            self.reverse_from_bin() # this method will finish the state machine by setting self.result and self.state to done.
-        else:
-            print 'Error: invalid state: ', self.state
-            
-        # since were leaving, we can allow the callback to execute again for the next state.
-        self.ignore_callback = False 
+       self.data = data
         
     # method to find the target marker and timeout if it can't do it for several consecutive times.
-    def find_target_marker(self, data):
-        # checks that we can find markers
-        if not len(data.markers):
-            print 'target fiducial not seen yet..'
-            self.not_seen_count += 1
-            if self.not_seen_count > NOT_SEEN_TIMEOUT
-                self.fail('could not find fiducial after waiting NOT_SEEN_TIMEOUT times.')
-            return None
+    def find_target_marker(self):
+        not_seen_count = 0
+
+        while 1:
+            self.data = None
+            self.ignore_callback = False
             
-        target_marker = None
-        for m in data.markers:
-            if m.id == self.bin_no:
-                print 'found target marker (' + str(self.bin_no) + ') with ' + str(m.confidence), ' confidence level.'
-                target_marker = m
-                break
+            # waits for more data to arrive with a timeout.
+            t = time.clock()
+            while self.data == None:
+                if time.clock() - t > NOT_SEEN_TIMEOUT:
+                    self.ignore_callback = True
+                    raise ChockabotError('timed out wating for new data from callback. fiducials topic is not running..')
                 
-        if target_marker == None:
-            print 'Error: could not find target marker: ', self.bin_no
-            self.not_seen_count += 1
-            if self.not_seen_count > NOT_SEEN_TIMEOUT
-                self.fail('could not find target fiducial after waiting NOT_SEEN_TIMEOUT times.')
-            return None
-        
-        # resets the not_seen_count and returns the marker.
-        self.not_seen_count = 0
+            # checks that we can find markers
+            if not len(self.data.markers):
+                print 'target fiducial not seen yet..'
+                not_seen_count += 1
+                if not_seen_count > NOT_SEEN_COUNT_TIMEOUT
+                    self.ignore_callback = True
+                    raise ChockabotError('could not find fiducial after waiting NOT_SEEN_TIMEOUT times.')
+                continue # tries again.
+                
+            target_marker = None
+            for m in self.data.markers:
+                if m.id == self.bin_no:
+                    print 'found target marker (' + str(self.bin_no) + ') with ' + str(m.confidence), ' confidence level.'
+                    target_marker = m
+                    break
+                    
+            if target_marker == None:
+                print 'Error: could not find target marker: ', self.bin_no
+                not_seen_count += 1
+                if not_seen_count > NOT_SEEN_COUNT_TIMEOUT
+                    self.ignore_callback = True
+                    raise ChockabotError('could not find target fiducial after waiting NOT_SEEN_TIMEOUT times.')
+                continue
+                
+            break
+        # begins ignoring the callback now that we have the target marker.
+        self.ignore_callback = true
         return target_marker
         
     # This method puts the robot at a fixed distance away and facing exactly toward the fiducial and directly in front of the fiducial.
-    def line_up_robot(self, data):
+    def line_up_robot(self):
         # finds the target marker and returns if it can't find it.
-        target_marker = self.find_target_marker(data)
-        if target_marker == None:
-            return
-            
-        self.ignore_callback = True # ignores the callback while we do stuff.
+        target_marker = self.find_target_marker()
                     
         # currently just aligns with the first marker in the sequence
         fiducial_pose = target_marker.pose.pose
@@ -162,46 +161,23 @@ class FiducialServer():
         self.move_client.wait_for_result()
 
         # Checks the status of the goal. 
-        if (self.move_client.get_state() == ACTION_SUCCEEDED):
-            print 'action to move robot succeeded.'
-            self.state = STATE_ADVANCING_TO_BIN
-        else:
-            self.fail("action to move robot failed.")
+        if (self.move_client.get_state() != ACTION_SUCCEEDED):
+            raise ChockabotError("action to move robot failed.")
+            
+        print 'action to move robot succeeded.'
+            
         
     # this method advances the robot slowly forward to the bin. it advances, stops, and makes sure it's in line with the fiducial.
     # if it starts going off course, it will attempt to correct itself. if it can't do so, it will back up and retry.
-    def advance_to_bin(self, data):
-        print 'in state: advance to bin'
-         # checks that we can find markers
-        if not len(data.markers):
-            print 'target fiducial not seen...'
-            return
-            
-        target_marker = None
-        for m in data.markers:
-            if m.id == self.bin_no:
-                print 'found target marker (' + str(self.bin_no) + ') with ' + str(m.confidence), ' confidence level.'
-                target_marker = m
-                break
-                
-        if target_marker == None:
-            print 'Error: could not find target marker: ', self.bin_no
-            return
-        
-        self.ignore_callback = True # ignores the callback while we do stuff.
+    def advance_to_bin(self):
+        print 'advancing to bin'
+        target_marker = self.find_target_marker()
                     
-        # currently just aligns with the first marker in the sequence
         fiducial_pose = target_marker.pose.pose
 
-        # creates the goal and assigns the position and orientation.
-        new_goal = MoveBaseGoal()
+        # creates the goal and assigns the position and orientation to move it smoothly to the bin.
+        twist = Twist()
         
-        
-        
-        # eventually, ........
-        data = self.get_new_ar_data()
-        self.pick_up_bin()
-        self.reverse_from_bin()
         
     # this method controlls the linear actuator by lifting it up
     def pick_up_bin(self):
@@ -213,14 +189,6 @@ class FiducialServer():
     def reverse_from_bin(self):
         print 'in state: reverse from bin'
         pass
-        self.result = RESULT_FAILURE
-        self.state = STATE_DONE
-        
-    # this method
-    def fail(self, msg):
-        print 'failed: ', msg
-        self.result = RESULT_FAILURE
-        self.state = STATE_DONE
         
 if __name__ == '__main__':
     FiducialServer()
