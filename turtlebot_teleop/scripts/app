@@ -6,6 +6,7 @@ import time
 import rospy
 import turtlebot_teleop.msg
 from std_msgs.msg import String
+import socket
 
 pub = None
 
@@ -100,7 +101,7 @@ def end_request(name):
 USE BLOCK COMMENTS ITS HARD TO UNCOMMENT EACH LINE INDIVIDUALYY ZACHCHHHHHCHCHCH
 """   
 class UserCompleteAction(object):
-    create messages that are used to publish feedback/result
+    # create messages that are used to publish feedback/result
     _feedback = turtlebot_teleop.msg.UserCompleteFeedback()
     _result   = turtlebot_teleop.msg.UserCompleteResult()
 
@@ -111,17 +112,17 @@ class UserCompleteAction(object):
         
     def execute_cb(self, goal):
         global request_statuses
-        helper variables
+        # helper variables
         r = rospy.Rate(1) # helps sleep at a set rate
         success = False
         
-        set initial cycle count
+        #set initial cycle count
         self._feedback.count = 0
         
-        publish info to the console for the user
+        #publish info to the console for the user
         rospy.loginfo('%s: Executing, ending of a user request %s' % (self._action_name, goal.job))
         
-        Set completed to true
+        # Set completed to true
         item, location, queue_num, completed = request_statuses[goal.job]
         request_statuses[goal.job] = (item, location, queue_num, True)
         
@@ -175,9 +176,19 @@ if __name__ == '__main__':
     
     rospy.init_node('web_app')
     app.secret_key = 'super secret key'
-    app.run( 
-            host="0.0.0.0",
-            port=int("33333")
-    )
+    
+    # THIS COULD BE A PROBLEM IN THE FUTURE
+    # Correction: It will be a problem
+    port_num = 33333
+    success = False
+    while not success:
+        try:
+            app.run( 
+                    host="0.0.0.0",
+                    port=port_num
+            )
+            success = True
+        except socket.error:
+            port_num += 1
     
     rospy.spin()

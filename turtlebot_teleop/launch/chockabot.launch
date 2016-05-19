@@ -1,0 +1,13 @@
+ <!-- CREATED TO LIMIT THE NUMBER OF LAUNCH FILES TO START CHOCKABOT -->
+<launch>
+  <node pkg="turtlebot_teleop" type="app" name="app"  output="screen">
+    <param name="scale_linear" value="0.5" type="double"/>
+    <param name="scale_angular" value="1.5" type="double"/>
+  </node>
+  <node pkg="turtlebot_teleop" type="chockabot_brain" name="chockabot_brain" output="screen">
+    <param name="scale_linear" value="0.5" type="double"/>
+    <param name="scale_angular" value="1.5" type="double"/>
+    <remap from="chockabot_brain/cmd_vel" to="cmd_vel_mux/input/teleop"/>
+  </node>
+</launch>
+
