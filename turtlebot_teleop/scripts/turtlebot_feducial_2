@@ -65,7 +65,7 @@ class FiducialServer():
         self.linear_actuator_pub = rospy.Publisher('linear_actuator_input', Int32, queue_size=1)
         print 'subscribing to linear actuator position..'
         rospy.Subscriber('linear_actuator_position', Int32, self.linear_actuator_callback, queue_size=1)
-        print 'ready...'
+        print 'Fiducial Server ready...'
         rospy.spin()
         
     # The service call to retrieve a bin from a shelf.
@@ -73,7 +73,7 @@ class FiducialServer():
         self.bin_no = bin_request.bin
         
         try:
-            # self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
+            self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
             self.advance_to_bin()
             self.pick_up_bin()
             self.reverse_from_bin(20)
@@ -209,7 +209,7 @@ class FiducialServer():
         print 'advancing to bin'
         num_consecutive_yaws_to_check = 1
         final_yaws = []
-        goal_position_achieved = False
+        goal_position_achieved = False # after the goal position is achieved, we only worry about the orientation.
         while 1:
             target_marker = self.find_target_marker() # gets the current pose of the fiducial
                         
@@ -229,20 +229,19 @@ class FiducialServer():
             
             goal_distance = math.sqrt(goal_position_x**2 + goal_position_y**2)
             
-            # goal_position_achieved = True
-            # calculates the target angle needed to get it to the correct spot.
             if goal_distance < GOAL_POSITION_TOLERANCE:
                 goal_position_achieved = True
             
             if goal_position_achieved:
-                print 'goal position achieved, turning robot to face fiducial..'
+                print 'goal position achieved, rotating robot to face fiducial..'
                 # reverses orientation around to face the fiducial rather than face the same direction as the fiducial.
                 final_yaw += math.pi
                 if final_yaw > math.pi:
                     final_yaw -= 2 * math.pi
                 
-                print 'final yaw: ', final_yaw
+                print 'current yaw: ', final_yaw
                 
+                # if the have seen good consecutive yaw values, succeed. This prevents from bad readings.
                 final_yaws.append(final_yaw)
                 if len(final_yaws) == num_consecutive_yaws_to_check:
                     # if last three checks were within tolerance, succeeds.
@@ -255,13 +254,14 @@ class FiducialServer():
                         return
                     final_yaws.pop(0) # removes last item
                         
-                
+                # adjusts rotation
                 if final_yaw < 0:
                     twist.angular.z = min(max(final_yaw * 2.6, -.3), -.2) # keep between min and max
                 else:
                     twist.angular.z = max(min(final_yaw * 2.6, .3), .2)   # keep between min and max
                 twist.linear.x = 0
                 
+                # publishes rotation multiple times to make it faster.
                 for i in range(15):
                     self.cmd_vel.publish(twist)
                     new_twist = Twist()
@@ -326,8 +326,7 @@ class FiducialServer():
     def linear_actuator_callback(self, cur_pos):
         self.linear_actuator_position = cur_pos.data
         
-    # this method reverses the robot away from the bin, and transitions the service call to finished.
-    # it will finish the state machine by setting self.result and self.state to done.
+    # this method reverses the robot away from the bin. it publishes num_times amout.
     def reverse_from_bin(self, num_times):
         print 'in state: reverse from bin'
         # creates the goal and reverses slowly.
