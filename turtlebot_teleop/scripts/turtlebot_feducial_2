@@ -4,14 +4,20 @@ import rospy
 import math
 import time
 from actionlib import SimpleActionClient
-from std_msgs.msg import String
+from std_msgs.msg import String, Int32
 from turtlebot_teleop.srv import GetBin, GetBinRequest, GetBinResponse
+from geometry_msgs.msg import Quaternion, Pose, Point, PoseWithCovarianceStamped, Twist
 from ar_track_alvar_msgs.msg import AlvarMarkers
 from move_base_msgs.msg import MoveBaseActionGoal, MoveBaseActionFeedback, MoveBaseActionResult, MoveBaseAction, MoveBaseGoal, MoveBaseResult
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
-# the distance that the turtlebot should be in front of the fiducial when it stops.
-DISTANCE_FROM_FIDUCIAL = 0.6
+INITIAL_DISTANCE_FROM_FIDUCIAL = 1.0 # the distance that the turtlebot should be in front of the fiducial when it stops to begin twist() navigatin.
+FINAL_DISTANCE_FROM_FIDUCIAL = 0.6   # the distance that the turtlebot should be in front of the fiducial when it stops to pick up the bin.
+
+GOAL_POSITION_TOLERANCE = 0.03 # the tolerance to accept the robots position as the final bin pick up positoin. (m?)
+GOAL_YAW_TOLERANCE = 0.01 # the tolernace to accept the robot's yaw as the final bin pick up yaw. (radians)
+
+MAX_SPEED = 0.12 # the maximum speed of the robot during the move up to bin phase.
 
 # constants representing goal
 ACTION_ACTIVE = 1
@@ -24,6 +30,7 @@ RESULT_FAILURE = 0
 
 NOT_SEEN_TIMEOUT = 5 # number of seconds to wait until we fail if we haven't seen /ar_pose_marker topic
 NOT_SEEN_COUNT_TIMEOUT = 5 # number of times we should allow to not see our specific target
+LINEAR_ACTUATOR_POSITION_TIMEOUT = 40 # time we should wait for the linear actuator to rise/fall before timing out.
 
 PUBLISHER_QUEUE_SIZE = 20 # nubmer of cmd_vel Twist() objects we should hold in the queue.
 
@@ -45,7 +52,7 @@ class FiducialServer():
         self.move_client.wait_for_server()
         
         self.get_service = rospy.Service('get_bin', GetBin, self.get_bin)
-        # self.set_service = rospy.Service('set_bin', GetBin, self.set_bin)
+        self.set_service = rospy.Service('set_bin', GetBin, self.set_bin)
 
         # subscribes to the topic giving us the markers and their positions.
         print 'subscribing to ar_pose_marker topic... if it doesnt continue, run `roslaunch turtlebot_teleop alvar.launch` on computer.'
@@ -53,6 +60,12 @@ class FiducialServer():
         
         # publishes to the cmd_vel topic to controlt he robot.
         self.cmd_vel = rospy.Publisher('~cmd_vel', Twist, queue_size=PUBLISHER_QUEUE_SIZE)
+        
+        # publishes and subscribes to the linear actuator.
+        self.linear_actuator_pub = rospy.Publisher('linear_actuator_input', Int32, queue_size=1)
+        print 'subscribing to linear actuator position..'
+        rospy.Subscriber('linear_actuator_position', Int32, self.linear_actuator_callback, queue_size=1)
+        print 'ready...'
         rospy.spin()
         
     # The service call to retrieve a bin from a shelf.
@@ -60,14 +73,31 @@ class FiducialServer():
         self.bin_no = bin_request.bin
         
         try:
-            self.line_up_robot()
+            # self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
             self.advance_to_bin()
             self.pick_up_bin()
-            self.reverse_from_bin()
+            self.reverse_from_bin(20)
         except ChockabotError as e:
             print 'Error: ' + e.msg
             return GetBinResponse(RESULT_FAILURE)
             
+        print 'Service Completed.'
+        return GetBinResponse(RESULT_SUCCESS)
+        
+    # The service call to place a bin on the shelf.
+    def set_bin(self, bin_request):
+        self.bin_no = bin_request.bin
+        
+        try:
+            self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
+            self.advance_to_bin()
+            self.set_down_bin()
+            self.reverse_from_bin(20)
+        except ChockabotError as e:
+            print 'Error: ' + e.msg
+            return GetBinResponse(RESULT_FAILURE)
+            
+        print 'Service Completed.'
         return GetBinResponse(RESULT_SUCCESS)
         
     # the callback called when feducials are recognized.
@@ -76,9 +106,9 @@ class FiducialServer():
         if self.ignore_callback:
             return
             
-       self.data = data
+        self.data = data
         
-    # method to find the target marker and timeout if it can't do it for several consecutive times.
+    # method to look for and find the target marker and timeout if it can't do it for several consecutive times.
     def find_target_marker(self):
         not_seen_count = 0
 
@@ -89,6 +119,7 @@ class FiducialServer():
             # waits for more data to arrive with a timeout.
             t = time.clock()
             while self.data == None:
+                rospy.sleep(0.1)
                 if time.clock() - t > NOT_SEEN_TIMEOUT:
                     self.ignore_callback = True
                     raise ChockabotError('timed out wating for new data from callback. fiducials topic is not running..')
@@ -96,8 +127,10 @@ class FiducialServer():
             # checks that we can find markers
             if not len(self.data.markers):
                 print 'target fiducial not seen yet..'
+                self.reverse_from_bin(1)
+                rospy.sleep(1)
                 not_seen_count += 1
-                if not_seen_count > NOT_SEEN_COUNT_TIMEOUT
+                if not_seen_count > NOT_SEEN_COUNT_TIMEOUT:
                     self.ignore_callback = True
                     raise ChockabotError('could not find fiducial after waiting NOT_SEEN_TIMEOUT times.')
                 continue # tries again.
@@ -112,18 +145,20 @@ class FiducialServer():
             if target_marker == None:
                 print 'Error: could not find target marker: ', self.bin_no
                 not_seen_count += 1
-                if not_seen_count > NOT_SEEN_COUNT_TIMEOUT
+                if not_seen_count > NOT_SEEN_COUNT_TIMEOUT:
                     self.ignore_callback = True
                     raise ChockabotError('could not find target fiducial after waiting NOT_SEEN_TIMEOUT times.')
                 continue
                 
             break
         # begins ignoring the callback now that we have the target marker.
-        self.ignore_callback = true
+        self.ignore_callback = True
         return target_marker
         
     # This method puts the robot at a fixed distance away and facing exactly toward the fiducial and directly in front of the fiducial.
-    def line_up_robot(self):
+    # it calls an action to line up the robot - move_base actions are unfortunately not accurate enough, so this only positions the robot
+    # in a rough estimated area close to the bin then we do our own more accurate line up in self.advance_to_robot() method.
+    def line_up_robot(self, distance):
         # finds the target marker and returns if it can't find it.
         target_marker = self.find_target_marker()
                     
@@ -135,10 +170,10 @@ class FiducialServer():
 
         # calculates the needed 'roll' (roll of the ar pose marker is actually the yaw of the robot) to determine which way the fiducial is facing.
         yaw = euler_from_quaternion((fiducial_pose.orientation.x, fiducial_pose.orientation.y, fiducial_pose.orientation.z, fiducial_pose.orientation.w))[0]
-                    
-        # # the new goal's position will be DISTANCE_FROM_FIDUCIAL away, lined up exactly facing toward the fiducial.
-        new_goal.target_pose.pose.position.y = -1 * ( fiducial_pose.position.x + (DISTANCE_FROM_FIDUCIAL * -1 * math.sin(yaw))) # multiplies by -1 because camera_rgb's -x is representavices of base link's x
-        new_goal.target_pose.pose.position.x = fiducial_pose.position.z + (DISTANCE_FROM_FIDUCIAL * math.cos(yaw)) # uses 'z' because camera_rgb's z is actually representative of base link's y.
+            
+        # # the new goal's position will be distance away, lined up exactly facing toward the fiducial.
+        new_goal.target_pose.pose.position.x = fiducial_pose.position.z + (distance * math.cos(yaw)) # uses 'z' because camera_rgb's z is actually representative of base link's y.
+        new_goal.target_pose.pose.position.y = -1 * ( fiducial_pose.position.x + (distance * -1 * math.sin(yaw))) # multiplies by -1 because camera_rgb's -x is representavices of base link's x
 
         # reverses orientation around to face the fiducial rather than face the same direction as the fiducial.
         yaw += math.pi
@@ -165,30 +200,146 @@ class FiducialServer():
             raise ChockabotError("action to move robot failed.")
             
         print 'action to move robot succeeded.'
+        
             
         
     # this method advances the robot slowly forward to the bin. it advances, stops, and makes sure it's in line with the fiducial.
     # if it starts going off course, it will attempt to correct itself. if it can't do so, it will back up and retry.
     def advance_to_bin(self):
         print 'advancing to bin'
-        target_marker = self.find_target_marker()
-                    
-        fiducial_pose = target_marker.pose.pose
+        num_consecutive_yaws_to_check = 1
+        final_yaws = []
+        goal_position_achieved = False
+        while 1:
+            target_marker = self.find_target_marker() # gets the current pose of the fiducial
+                        
+            fiducial_pose = target_marker.pose.pose
 
-        # creates the goal and assigns the position and orientation to move it smoothly to the bin.
-        twist = Twist()
-        
+            # creates the goal and assigns the position and orientation to move it smoothly to the bin.
+            twist = Twist()
+            
+            # calculates the needed 'roll' (roll of the ar pose marker is actually the yaw of the robot) to determine which way the fiducial is facing.
+            final_yaw = euler_from_quaternion((fiducial_pose.orientation.x, fiducial_pose.orientation.y, fiducial_pose.orientation.z, fiducial_pose.orientation.w))[0]
+                        
+            # the new goal's position will be FINAL_DISTANCE_FROM_FIDUCIAL away, lined up exactly facing toward the fiducial.
+            goal_position_x = fiducial_pose.position.z + (FINAL_DISTANCE_FROM_FIDUCIAL * math.cos(final_yaw)) # uses 'z' because camera_rgb's z is actually representative of base link's y.
+            goal_position_y = -1 * ( fiducial_pose.position.x + (FINAL_DISTANCE_FROM_FIDUCIAL * -1 * math.sin(final_yaw))) # multiplies by -1 because camera_rgb's -x is representavices of base link's x
+            
+            print 'goal x = ', goal_position_x, ' goal y = ', goal_position_y
+            
+            goal_distance = math.sqrt(goal_position_x**2 + goal_position_y**2)
+            
+            # goal_position_achieved = True
+            # calculates the target angle needed to get it to the correct spot.
+            if goal_distance < GOAL_POSITION_TOLERANCE:
+                goal_position_achieved = True
+            
+            if goal_position_achieved:
+                print 'goal position achieved, turning robot to face fiducial..'
+                # reverses orientation around to face the fiducial rather than face the same direction as the fiducial.
+                final_yaw += math.pi
+                if final_yaw > math.pi:
+                    final_yaw -= 2 * math.pi
+                
+                print 'final yaw: ', final_yaw
+                
+                final_yaws.append(final_yaw)
+                if len(final_yaws) == num_consecutive_yaws_to_check:
+                    # if last three checks were within tolerance, succeeds.
+                    all_good = True
+                    for y in final_yaws:
+                        if abs(y) >= GOAL_YAW_TOLERANCE:
+                            all_good = False
+                    if all_good:
+                        print 'success. moving forward'
+                        return
+                    final_yaws.pop(0) # removes last item
+                        
+                
+                if final_yaw < 0:
+                    twist.angular.z = min(max(final_yaw * 2.6, -.3), -.2) # keep between min and max
+                else:
+                    twist.angular.z = max(min(final_yaw * 2.6, .3), .2)   # keep between min and max
+                twist.linear.x = 0
+                
+                for i in range(15):
+                    self.cmd_vel.publish(twist)
+                    new_twist = Twist()
+                    new_twist.linear.x = twist.linear.x
+                    new_twist.angular.z = twist.angular.z
+                    twist = new_twist
+                    rospy.sleep(0.2)
+            else:
+                print 'not within tolerance yet. moving robot...'
+                calculated_yaw = math.atan2(goal_position_y, goal_position_x) # it IS supposed to be x and y
+                print ' calculated yaw: ', calculated_yaw, ' goal distance: ', goal_distance
+                # if we overshot the goal, try going backwards instead.
+                if abs(calculated_yaw) > math.pi / 2:
+                    twist.angular.z = 0
+                    twist.linear.x = -.05
+                else:
+                    twist.angular.z = calculated_yaw * (1 + goal_distance)
+                    twist.linear.x = max(min(0.4 * goal_distance, MAX_SPEED), .033)
+                
+            # if were still pretty far away, we can publish more than once.
+            if goal_distance > .16:
+                for i in range(1):
+                    self.cmd_vel.publish(twist)
+                    new_twist = Twist()
+                    new_twist.linear.x = twist.linear.x
+                    new_twist.angular.z = twist.angular.z
+                    twist = new_twist
+                    rospy.sleep(0.5)
+                    
+            # publishes the movement and re-checks the position.
+            self.cmd_vel.publish(twist)
+            rospy.sleep(0.8)
         
     # this method controlls the linear actuator by lifting it up
     def pick_up_bin(self):
         print 'in state: pick up bin'
-        pass
+        self.set_bin_value(255)
+    
+    # this method controlls the linear actuator by setting it down
+    def set_down_bin(self):
+        print 'in state: set down bin'
+        self.set_bin_value(0)
+        
+    def set_bin_value(self, pos):
+        print 'publishing to linear actuator topic..'
+        to_publish = Int32()
+        to_publish.data = pos
+        
+        # publishes to the topic and checks the value.
+        self.linear_actuator_pub.publish(to_publish)
+        self.linear_actuator_position = pos + 11
+        t = time.clock()
+        while abs(self.linear_actuator_position - pos) > 10:
+            if (time.clock() - t > LINEAR_ACTUATOR_POSITION_TIMEOUT):
+                raise ChockabotError('linear actuator timed out.')
+            pass
+       
+        # now, the linear actuator is in the correct postion. wait a sec for it to settle and return.
+        rospy.sleep(0.5)
+        
+    # will assign the updated linear actuator position to our instance variable.
+    def linear_actuator_callback(self, cur_pos):
+        self.linear_actuator_position = cur_pos.data
         
     # this method reverses the robot away from the bin, and transitions the service call to finished.
     # it will finish the state machine by setting self.result and self.state to done.
-    def reverse_from_bin(self):
+    def reverse_from_bin(self, num_times):
         print 'in state: reverse from bin'
-        pass
+        # creates the goal and reverses slowly.
+        twist = Twist()
+        twist.linear.x = -.05
+        for i in range(num_times):
+            self.cmd_vel.publish(twist)
+            new_twist = Twist()
+            new_twist.linear.x = twist.linear.x
+            new_twist.angular.z = twist.angular.z
+            twist = new_twist
+            rospy.sleep(0.5)
         
 if __name__ == '__main__':
     FiducialServer()
