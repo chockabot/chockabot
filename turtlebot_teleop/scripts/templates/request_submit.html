@@ -1,0 +1,22 @@
+{% with messages = get_flashed_messages() %}
+    {% if messages %}
+        <ul class=flashes>
+        {% for message in messages %}
+        <li>{{ message }}</li>
+        {% endfor %}
+        </ul>
+    {% endif %}
+{% endwith %}
+<h1>Hold your horses {{ name }}</h1>
+<h2>We're sending item: <strong>{{item}}</strong> <br /> To location: <strong> {{location}} </strong></h2>
+
+<div>
+    <h2>Please wait while we complete your request.</h2><br />
+    <h3 id="waittime"></h3>
+</div>
+<div id="complete">
+    <form method="post" action="{{url_for('end_request', name=name)}}">
+        <input type="submit" name="cancel" value="Cancel" />
+    </form>
+</div>
+<div id="spin" class="spinner"></div>

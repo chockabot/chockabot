@@ -1,0 +1,23 @@
+{% extends "index.html" %}
+{% block nav %}
+	<nav id="top-bar">
+		<span id="titleLogo">chockabot</span><span id="logout">Log Out</span>
+	</nav>
+{% endblock %}
+{% block mainContent %}
+    <h1>Welcome back, {{ name }}</h1>
+
+    <form class="form" id="requestForm" method="POST" action="{{ url_for('itemRequest') }}">
+        <label for="item">Item Needed:</label>
+        <select name="item">
+            <option value="Medicine">Medicine</option>
+            <option value="Dressings">Dressings</option>
+        </select>
+        <label for="location">Dropoff location:</label>
+        <select name="location">
+            <option value="502">Room 502</option>
+            <option value="503">Room 503</option>
+        </select>
+        <button type="submit">Submit Request</button>
+    </form>
+{% endblock %}
