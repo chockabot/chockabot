@@ -7,16 +7,20 @@
         </ul>
     {% endif %}
 {% endwith %}
-<h1>Hold your horses {{ name }}</h1>
-<h2>We're sending item: <strong>{{item}}</strong> <br /> To location: <strong> {{location}} </strong></h2>
-
-<div>
-    <h2>Please wait while we complete your request.</h2><br />
-    <h3 id="waittime"></h3>
-</div>
-<div id="complete">
-    <form method="post" action="{{url_for('end_request', name=name)}}">
-        <input type="submit" name="cancel" value="Cancel" />
+<div id="complete" style="display:None">
+    <h1 id="item_ready">Your item's all set to go!</h1>
+    <form id="completeForm" method="post" action="{{url_for('end_request', name=name)}}">
+        <input type="submit" name="endReuqest" value="Complete Pickup" />
     </form>
 </div>
-<div id="spin" class="spinner"></div>
+<div id="loading_content">
+    <h1>Hold your horses, {{ name }}</h1>
+    <h2>We're sending item: <strong>{{item}}</strong> <br /> To location: <strong> {{location}} </strong></h2>
+    <div>
+        <div class="centered"><div id="spin" class="spinner"></div></div>
+        <h3 id="waittime"></h3>
+    </div>
+    <form id="loadingForm" method="post" action="{{url_for('cancel_request', name=name)}}">
+            <input type="submit" name="cancel" value="Cancel" />
+    </form>
+</div>

@@ -1,8 +1,8 @@
 {% extends "index.html" %}
 {% block nav %}
 	<nav id="top-bar">
-		<span id="titleLogo">chockabot</span><span id="logout">Log Out</span>
-	</nav>
+        <span id="titleLogo">chockabot</span><span id="logout"><a id="logoutText" href="#">Log Out</a></span>
+    </nav>
 {% endblock %}
 {% block mainContent %}
     <h1>Welcome back, {{ name }}</h1>

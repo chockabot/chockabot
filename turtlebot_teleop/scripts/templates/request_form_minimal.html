@@ -1,4 +1,14 @@
-<h1>Welcome back, {{ name }}</h1>
+{% if request_ended %}
+	<h1>Thanks for getting your item, {{ name }}</h1>
+{% elif request_not_found %}
+	<h1>Your request couldn't be found, {{ name}}</h1><br />
+	<h2>Please make a new one</h2>
+{% elif request_canceled %}
+	<h1>Welcome back, {{ name }}</h1>
+	<h2>Your request has been canceled</h2>
+{% else %}
+	<h1>Welcome back, {{ name }}</h1>
+{% endif %}
 
 <form class="form" id="requestForm" method="POST" action="{{ url_for('itemRequest') }}">
     <label for="item">Item Needed:</label>
@@ -13,3 +23,4 @@
         </select>
     <button type="submit">Submit Request</button>
 </form>
+

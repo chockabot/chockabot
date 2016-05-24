@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="UTF-8">
+		<meta content='width=device-width, initial-scale=.8' name='viewport'/>
     <title>chockabot</title>
         <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   </head>
@@ -11,7 +12,7 @@
     <div id="fullContent" class="wrapper">
 		{% block nav %}
 		<nav id="top-bar" style="display:none">
-			<span id="titleLogo">chockabot</span><span id="logout">Log Out</span>
+			<span id="titleLogo">chockabot</span><span id="logout"><a id="logoutText" href="">Log Out</a></span>
 		</nav>
 		{% endblock %}
 	<div id="mainContent" class="container">

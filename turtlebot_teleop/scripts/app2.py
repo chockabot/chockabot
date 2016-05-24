@@ -8,6 +8,7 @@ import time
 # from std_msgs.msg import String
 
 pub = None
+cancelPub = None
 
 # Reuqests are stored in the dictionary in the following way:
 # Requester name -> (item, location, number in queue, completed)
@@ -44,6 +45,7 @@ def loginUser():
     print "User is %s:%s", (username, password)
     if username in usernames:
         if usernames[username] == password:
+            print "User authenticated"
             # Set our cookie and return the request
             # resp = make_response(render_template('request_form_full.html', name=username))
             resp = make_response(render_template('request_form_minimal.html', name=username))
@@ -51,19 +53,6 @@ def loginUser():
             return resp
             
     return "failure"
-            
-            
-# Probably will not need to use this method at all
-# @app.route('/user/<name>')
-# def user(name):
-#     username = request.cookies.get('userID')
-#     if name != username:
-#         # failure
-#         flash("You are not authorized")
-#         return redirect(url_for('/'))
-#     else:
-#         return "Logged in!"
-#         pass
 
 @app.route('/itemRequest/', methods=['POST'])
 def itemRequest():
@@ -93,7 +82,24 @@ def itemRequest():
         print request_statuses
     
     return render_template('request_submit.html', item=item, location=location, name=name)
+
+@app.route('/cancel_request/<name>', methods=['POST'])
+def cancel_request(name):
+    if name in request_statuses:
+            global queued_requests
+            
+            item, location, _, _ = request_statuses[name]
+            # """"
+            # global cancelPub
+            # pub.publish(str.format('{0}\t{1}\t{2}'), name, item, location))
+            # """"
+            del request_statuses[name]
+            queued_requests -= 1
+            return render_template('request_form_minimal.html', name=name, request_canceled="yes")
+            
+    return render_template('request_form_minimal.html', name=name, request_not_found="yes")
     
+
 @app.route('/show_status/<name>', methods=['GET'])
 def show_status(name):
     if name not in request_statuses:
@@ -110,14 +116,12 @@ def show_status(name):
 def end_request(name):
     global request_statuses
     if name not in request_statuses:
-        flash('Your request could not be found!')
-        flash('It has either already been completed or has timed out.')
-        return render_template('form_submit.html')
+        return render_template('request_form_minimal.html', name=name, request_not_found="yes")
     
     item, location, queue_num, completed = request_statuses[name]
     if not completed:
         flash('Your request has not completed yet!')
-        return render_template('form_submit.html', name=name, item=item, location=location)
+        return render_template('request_submit.html', name=name, item=item, location=location)
     
     del request_statuses[name]
     
@@ -128,8 +132,7 @@ def end_request(name):
         req_item, req_loc, req_num, req_complete = request_statuses[key]
         request_statuses[key] = (req_item, req_loc, req_num-1, req_complete)
         
-    flash("Thank you for picking up your item!")
-    return render_template('form_submit.html')
+    return render_template('request_form_minimal.html', name=name, request_ended="yes")
     
     
 class JobCompletionNotification(object):
@@ -205,6 +208,7 @@ if __name__ == '__main__':
     # where the delimeter is a tab. The requester name becomes the key
     # for the request, as each requester can only have one outstanding request
     # pub = rospy.Publisher('item_requests', String, queue_size=0)
+    # cancelPub = rospy.Publisher('cancel_requests', String, queue_size=0)
     
     # rospy.init_node('web_app')
     usernames['test'] = 'test'
