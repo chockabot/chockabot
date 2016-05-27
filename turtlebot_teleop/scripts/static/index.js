@@ -13,6 +13,12 @@ function pageFadeIn(result) {
 	document.getElementById("mainContent").innerHTML = result;
 	$("#mainContent").fadeIn(500);
 	reloadJs("/static/index.js");
+}
+
+function loadingPageFadeIn(result) {
+	document.getElementById("mainContent").innerHTML = result;
+	$("#mainContent").fadeIn(500);
+	reloadJs("/static/index.js");
 	sendRequest();
 }
 
@@ -50,7 +56,7 @@ $("#requestForm").submit(function (event) {
 		success: function (result) {
 			console.log(result);
 			$("#mainContent").fadeOut(300);
-			setTimeout(function() { pageFadeIn(result); }, 250);
+			setTimeout(function() { loadingPageFadeIn(result); }, 250);
 		},
 		error: function () {
 			// Do nothing
@@ -159,7 +165,7 @@ function handleResponse(http) {
 				// setTimeout(function() {$('#wrapper').addClass('form-success');}, 500);
 				// document.getElementById("complete").style.visibility = "visible";
 				// document.getElementById("spin").style.visibility = "hidden";
-				itemPickup = setTimeout("endRequest()", 3100);
+				itemPickup = setTimeout("endRequest()", 31000);
 			});
 		}
 	}
@@ -174,7 +180,7 @@ function endRequest() {
 	// Make Ajax request to grab page from server
 	var http = new XMLHttpRequest();
 	var username = getCookie("userID");
-	http.open("GET", "/end_request" + username, true);
+	http.open("POST", "/end_request/" + username, true);
 	http.onreadystatechange = function () { handleEndResponse(http) };
 	http.send(null);
 }
@@ -184,8 +190,7 @@ function handleEndResponse(http) {
 	if (http.readyState == 4) {
 		response = http.responseText;
 		$("#mainContent").fadeOut(300);
-		setTimeout(function () { pageFadeIn(result); }, 250);
-		document.getElementById("mainContent").innerHTML = response;
+		setTimeout(function () { pageFadeIn(response); }, 250);
 	}
 }
 

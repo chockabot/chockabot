@@ -109,6 +109,20 @@ body :-ms-input-placeholder {
           transform: translateY(50px) translateZ(0px);
 }
 
+#containerContent.container {
+  max-width: 90%;
+  height: 100%;
+  top: 50%;
+}
+
+#containerContent h1 {
+  font-size: 80px;
+}
+
+#containerContent h2 {
+  font-size: 60px;
+}
+
 .container {
   max-width: 600px;
   margin: auto;
