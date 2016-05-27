@@ -38,7 +38,7 @@ def current_job():
 
 @app.route('/get_current_job/', methods=['POST'])
 def get_current_job():
-    for key in queued_requests:
+    for key in request_statuses:
         req_item, req_loc, req_num, req_complete, req_timestamp = request_statuses[key]
         if req_num == 1:
             # This is our job
@@ -140,7 +140,7 @@ def end_request(name):
     if name not in request_statuses:
         return render_template('request_form_minimal.html', name=name, request_not_found="yes")
     
-    item, location, queue_num, completed = request_statuses[name]
+    item, location, queue_num, completed, timestamp = request_statuses[name]
     if not completed:
         flash('Your request has not completed yet!')
         return render_template('request_submit.html', name=name, item=item, location=location)

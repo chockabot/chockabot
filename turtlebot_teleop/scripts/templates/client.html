@@ -7,10 +7,10 @@
         <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   </head>
 
-  <body>
+  <body onload="sendRequest()">
 
     <div id="fullContent" class="wrapper">
-	<div id="mainContent" style="display:none" class="container">
+	<div id="containerContent" style="display:none" class="container">
 		<!--Generated AJAX content goes here-->
 	</div>
 	
