@@ -11,7 +11,7 @@ from ar_track_alvar_msgs.msg import AlvarMarkers
 from move_base_msgs.msg import MoveBaseActionGoal, MoveBaseActionFeedback, MoveBaseActionResult, MoveBaseAction, MoveBaseGoal, MoveBaseResult
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
-INITIAL_DISTANCE_FROM_FIDUCIAL = 1.0 # the distance that the turtlebot should be in front of the fiducial when it stops to begin twist() navigatin.
+INITIAL_DISTANCE_FROM_FIDUCIAL = 1.5 # the distance that the turtlebot should be in front of the fiducial when it stops to begin twist() navigatin.
 FINAL_DISTANCE_FROM_FIDUCIAL = 0.6   # the distance that the turtlebot should be in front of the fiducial when it stops to pick up the bin.
 
 GOAL_POSITION_TOLERANCE = 0.03 # the tolerance to accept the robots position as the final bin pick up positoin. (m?)
@@ -48,7 +48,7 @@ class FiducialServer():
         rospy.init_node("turtlebot_feducial_2")
 
         self.move_client = SimpleActionClient('move_base', MoveBaseAction)
-        print 'waiting for server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch` on the robot.'
+        print 'waiting for server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch map_file:=/tmp/my_map.yaml` on the robot.'
         self.move_client.wait_for_server()
         
         self.get_service = rospy.Service('get_bin', GetBin, self.get_bin)
@@ -210,6 +210,8 @@ class FiducialServer():
         num_consecutive_yaws_to_check = 1
         final_yaws = []
         goal_position_achieved = False # after the goal position is achieved, we only worry about the orientation.
+        
+        ##TODO maybe have a timeout like if it doesnt return in say 2 min then we need to throw exception
         while 1:
             target_marker = self.find_target_marker() # gets the current pose of the fiducial
                         
@@ -278,7 +280,7 @@ class FiducialServer():
                     twist.angular.z = 0
                     twist.linear.x = -.05
                 else:
-                    twist.angular.z = calculated_yaw * (1 + goal_distance)
+                    twist.angular.z = calculated_yaw#* (1 + goal_distance)
                     twist.linear.x = max(min(0.4 * goal_distance, MAX_SPEED), .033)
                 
             # if were still pretty far away, we can publish more than once.

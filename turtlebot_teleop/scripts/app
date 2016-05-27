@@ -8,6 +8,8 @@ import turtlebot_teleop.msg
 from std_msgs.msg import String
 import socket
 
+import actionlib
+
 pub = None
 
 # Reuqests are stored in the dictionary in the following way:
@@ -172,9 +174,13 @@ if __name__ == '__main__':
     # Requester name      item      location
     # where the delimeter is a tab. The requester name becomes the key
     # for the request, as each requester can only have one outstanding request
+    rospy.init_node('web_app')
+    UserCompleteAction(rospy.get_name())
+    
     pub = rospy.Publisher('item_requests', String, queue_size=0)
     
-    rospy.init_node('web_app')
+    
+    
     app.secret_key = 'super secret key'
     
     # THIS COULD BE A PROBLEM IN THE FUTURE

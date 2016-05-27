@@ -10,6 +10,7 @@ import turtlebot_teleop.msg
 from std_msgs.msg import String
 from geometry_msgs.msg import Point, PoseStamped, Pose, Quaternion
 from move_base_msgs.msg import MoveBaseActionGoal, MoveBaseActionFeedback, MoveBaseActionResult, MoveBaseAction, MoveBaseGoal, MoveBaseResult
+from turtlebot_teleop.srv import GetBin, GetBinRequest, GetBinResponse
 
 import sys, select, termios, tty, Queue
 
@@ -30,12 +31,14 @@ class ChockabotBrain():
         rospy.init_node('chockabot_brain')
         
         self.move_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
-        print 'waiting for moving server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch` on the robot.'
+        print 'waiting for moving server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch map_file:=/tmp/my_map.yaml` on the robot.'
         self.move_client.wait_for_server()
+        print 'Connected move client'
         
         self.complete_action = actionlib.SimpleActionClient('web_app', turtlebot_teleop.msg.UserCompleteAction)
         print 'waiting for server... if it doesn"t show, run `roslaunch turtlebot_teleop app.launch` on this terminal.'
         self.complete_action.wait_for_server()
+        print 'Connected with web_app'
         
         self.cancel_list = []        
        
@@ -55,8 +58,6 @@ class ChockabotBrain():
             
 
         self.home_timer = None
-        
-        
 
         self.job_sub = rospy.Subscriber('item_requests', String, self.job_callback)
         # self.cancel_sub = rospy.Subscriber('item_cancellations', String, self.cancel_callback)
@@ -65,6 +66,7 @@ class ChockabotBrain():
         print 'dests', self.dest_loc
         
         self.execute_job('hillary', 'dog', 'hall')
+        print 'done'
 
         rospy.spin()
 
@@ -117,29 +119,86 @@ class ChockabotBrain():
             return
     
         # STEP 1: Go to the item location
-        item_goal = MoveBaseGoal()
-        item_goal.target_pose = self.item_loc[item]
-        move_client.send_goal(item_goal)
-        move_client.wait_for_result()
-        # STEP 2: Align with Fiducial
-            # TODO(Cody) Call Fiducial alignment service
-        # STEP 3: Use arm to get object
-            # TODO(Cody) Call arm grabbing service
-        # STEP 4: Go to destination location
-        dest_goal = MoveBaseGoal()
-        dest_goal.target_pose = self.dest_loc[destination]
-        move_client.send_goal(dest_goal)
-        move_client.wait_for_result()
-        # STEP 5: Send JobCompletionNotification Action (wait for completion)
+        if not self.travel_to_loc(self.item_loc[item]):
+            rospy.logerr('Couldn\'t go to item location.')
+            self.send_failure(name)
+            return
+        
+        # STEP 2: Align with Fiducial + Get Object
+        # TODO (klholden): add a file that saves the mapping of shelves to fiducials
+        # TODO (klholden): add redo capability if failed? (or does cody do that)
+        if not self.get_bin_helper(0):
+            rospy.logerr('Couldn\'t return extract bin.')
+            self.send_failure(name)
+            return
+            
+        # STEP 3: Go to destination location        
+        if not self.travel_to_loc(self.dest_loc[destination]):
+            rospy.logerr('Couldn\'t go to destination location.')
+            self.send_failure(name)
+            return
+        
+        # STEP 4: Send JobCompletionNotification Action (wait for completion)
+        self.send_completion(name)
+        if self.complete_action.get_result():
+            rospy.loginfo(rospy.get_caller_id() + ' finished job for %s', name)
+        else:
+            rospy.loginfo(rospy.get_caller_id() + ' did not finish job for %s', name)      
+
+        # STEP 5: Return to Shelf Location
+        if not self.travel_to_loc(self.item_loc[item]):
+            rospy.logerr('Couldn\'t return to bin location to return bin.')
+            return
+        
+        # STEP 6: Place Bin on Shelf
+        # TODO (klholden): add a file that saves the mapping of shelves to fiducials
+        if not self.return_bin_helper(0):
+            rospy.logerr('Couldn\'t return the bin to the shelf.')
+            return
+        
+        
+    def send_failure(self, name):
+        failure = 'FAILED: %s' % name
+        self.send_completion(failure)
+    
+    def send_completion(self, name):
         self.complete_action.wait_for_server()
         goal = turtlebot_teleop.msg.UserCompleteGoal(job=name)
         self.complete_action.send_goal(goal)
-        client.wait_for_result()
-
-        if client.get_result():
-            rospy.loginfo(rospy.get_caller_id() + ' finished job for %s', name)
-        else:
-            rospy.loginfo(rospy.get_caller_id() + ' did not finish job for %s', name)        
+        self.complete_action.wait_for_result()        
+                
+    def travel_to_loc(self, pose_stamped):
+        goal = MoveBaseGoal()
+        goal.target_pose = pose_stamped
+        self.move_client.send_goal(goal)
+        self.move_client.wait_for_result()        
+        return self.move_client.get_result() == ACTION_SUCCEEDED
+        
+    def get_bin_helper(self, fiducial):
+        rospy.wait_for_service('get_bin')
+        try:
+            print 'requesting fiducial ', fiducal, '...'
+            get_bin = rospy.ServiceProxy('get_bin', GetBin)
+            res = get_bin(fiducal)
+            print 'result: ', res.result
+            return True
+            
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e
+            return False
+            
+    def return_bin_helper(self, fiducial):
+        rospy.wait_for_service('set_bin')
+        try:
+            print 'requesting fiducial ', fiducal, '...'
+            set_bin = rospy.ServiceProxy('set_bin', GetBin)
+            res = set_bin(fiducal)
+            print 'result: ', res.result
+            return True
+            
+        except rospy.ServiceException, e:
+            print "Service call failed: %s"%e
+            return False
 
     def create_home_timer(self):
         if self.home_timer:
@@ -184,7 +243,10 @@ class ChockabotBrain():
                     loc_pose.orientation.z = pose_data[1][0]
                     loc_pose.orientation.w = pose_data[1][1]
                     
-                loaded_locs[data_name] = loc_pose
+                    
+                loc_pose_stamped = PoseStamped()
+                loc_pose_stamped.pose = loc_pose
+                loaded_locs[data_name] = loc_pose_stamped
         except Exception as e:
             rospy.loginfo('Could not load from file %s: %s' % (file_name, e))        
         return loaded_locs
