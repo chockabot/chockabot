@@ -1,7 +1,7 @@
 {% if request_ended %}
 	<h1>Thanks for getting your item, {{ name }}</h1>
 {% elif request_not_found %}
-	<h1>Your request couldn't be found, {{ name}}</h1><br />
+	<h1>Your request timed out, {{ name}}</h1><br />
 	<h2>Please make a new one</h2>
 {% elif request_canceled %}
 	<h1>Welcome back, {{ name }}</h1>

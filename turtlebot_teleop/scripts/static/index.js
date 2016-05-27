@@ -1,5 +1,21 @@
 var itemPickup;
 
+function loginFadeIn(result) {
+	document.getElementById("mainContent").innerHTML = result;
+	$("#mainContent").fadeIn(500);
+	$("#top-bar").fadeIn(500);
+	$("#top-bar").addClass("form-success")
+	setTimeout(function () { $("#top-bar").removeClass("main move-shit-up form-success") }, 1500);
+	reloadJs("/static/index.js");
+}
+
+function pageFadeIn(result) {
+	document.getElementById("mainContent").innerHTML = result;
+	$("#mainContent").fadeIn(500);
+	reloadJs("/static/index.js");
+	sendRequest();
+}
+
 $("#loginForm").submit(function (event) {
 	event.preventDefault();
 	$.ajax({
@@ -12,10 +28,10 @@ $("#loginForm").submit(function (event) {
 			if (result == "failure") {
 				document.getElementById("LoginMsg").innerHTML = "Couldn't log you in. Please try again";
 			} else {
-				document.getElementById("mainContent").innerHTML = result;
-				$("#mainContent").fadeIn(300);
-				$("#top-bar").fadeIn(500);
-				reloadJs("/static/index.js")
+				$("#mainContent").fadeOut(500);
+				$("#top-bar").addClass("move-shit-up")
+				setTimeout(function () { loginFadeIn(result); }, 250);
+
 			}
 		},
 		error: function () {
@@ -33,26 +49,10 @@ $("#requestForm").submit(function (event) {
 		data: $("#requestForm").serialize(),
 		success: function (result) {
 			console.log(result);
-			
-				// $('#mainContent').fadeOut(300);
-				// $('.wrapper').addClass('form-success');
-				// $("#mainContent").html = result;
-				document.getElementById("mainContent").innerHTML = result;
-				$("#mainContent").fadeIn(300);
-				reloadJs("/static/index.js")
-				sendRequest();
-				// $("#top-bar").fadeIn(500);
-				// $('#mainContent').html = result;
-				
-				// window.location.href =  "{{ url_for('user', name=name) }}"
-				
-			// }
-			// else {
-			// 	$("LoginMsg").text("Couldn't log you in!")
-			// 	alert("Failed to login")
-			// }
+			$("#mainContent").fadeOut(300);
+			setTimeout(function() { pageFadeIn(result); }, 250);
 		},
-		error: function() {
+		error: function () {
 			// Do nothing
 		}
 	});
@@ -70,17 +70,10 @@ $("#loadingForm").submit(function (event) {
 			if (result == "failure") {
 				document.getElementById("LoginMsg").innerHTML = "Couldn't log you in. Please try again";
 			} else {
-				document.getElementById("mainContent").innerHTML = result;
-				$("#mainContent").fadeIn(300);
-				$("#top-bar").fadeIn(500);
-				reloadJs("/static/index.js")
+				$("#mainContent").fadeOut(300);
+				setTimeout(function() { pageFadeIn(result); }, 250);
 			}
 
-			// $('#mainContent').fadeOut(300);
-			// $('.wrapper').addClass('form-success');
-			// $("#mainContent").html = result;
-
-			// $('#mainContent').html = result;
 		},
 		error: function () {
 			document.getElementById("LoginMsg").innerHTML = "Couldn't log you in. Please try again";
@@ -101,11 +94,10 @@ $("#completeForm").submit(function (event) {
 			if (result == "failure") {
 				document.getElementById("LoginMsg").innerHTML = "Couldn't log you in. Please try again";
 			} else {
+				$("#mainContent").fadeOut(300);
+				setTimeout(function() { pageFadeIn(result); }, 250);
 				document.getElementById("mainContent").innerHTML = result;
-				$("#mainContent").fadeIn(300);
-				$("#top-bar").fadeIn(500);
-				clearTimeout(itemPickup)
-				reloadJs("/static/index.js")
+				clearTimeout(itemPickup);
 			}
 		},
 		error: function () {
@@ -167,7 +159,7 @@ function handleResponse(http) {
 				// setTimeout(function() {$('#wrapper').addClass('form-success');}, 500);
 				// document.getElementById("complete").style.visibility = "visible";
 				// document.getElementById("spin").style.visibility = "hidden";
-				// itemPickup = setTimeout("endRequest()", 3000);
+				itemPickup = setTimeout("endRequest()", 3100);
 			});
 		}
 	}
@@ -176,6 +168,25 @@ function handleResponse(http) {
 function fadeInComplete() {
 	$("#complete").fadeIn(500);
 	$('#complete').addClass('form-success');
+}
+
+function endRequest() {
+	// Make Ajax request to grab page from server
+	var http = new XMLHttpRequest();
+	var username = getCookie("userID");
+	http.open("GET", "/end_request" + username, true);
+	http.onreadystatechange = function () { handleEndResponse(http) };
+	http.send(null);
+}
+
+function handleEndResponse(http) {
+	var response;
+	if (http.readyState == 4) {
+		response = http.responseText;
+		$("#mainContent").fadeOut(300);
+		setTimeout(function () { pageFadeIn(result); }, 250);
+		document.getElementById("mainContent").innerHTML = response;
+	}
 }
 
 function reloadJs(src) {

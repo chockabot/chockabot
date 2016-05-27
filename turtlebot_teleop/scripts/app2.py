@@ -31,6 +31,23 @@ def form():
         return render_template('request_form_full.html', name=userCookie)
     return render_template('index.html')
 
+@app.route('/current_job/')
+def current_job():
+    # Need to find job with requestNum = 0
+    return render_template('client.html')
+
+@app.route('/get_current_job/', methods=['POST'])
+def get_current_job():
+    for key in queued_requests:
+        req_item, req_loc, req_num, req_complete, req_timestamp = request_statuses[key]
+        if req_num == 1:
+            # This is our job
+            return render_template('client_min.html', name=key, item=req_item, room=req_loc)
+            
+    return render_template('client_min.html')
+    
+    
+
 # ------ Debugging Method ---------
 def simulate_complete(name):
     print "Timer elapsed"
@@ -47,7 +64,6 @@ def loginUser():
         if usernames[username] == password:
             print "User authenticated"
             # Set our cookie and return the request
-            # resp = make_response(render_template('request_form_full.html', name=username))
             resp = make_response(render_template('request_form_minimal.html', name=username))
             resp.set_cookie('userID', username)
             return resp
@@ -67,7 +83,7 @@ def itemRequest():
         # add one to the queue count
         global queued_requests
         queued_requests += 1
-        request_statuses[name] = (item, location, queued_requests, False)
+        request_statuses[name] = (item, location, queued_requests, False, time.time())
         
         # global pub
         # pub.publish(str.format('{0}\t{1}\t{2}', name, item, location))
@@ -88,13 +104,17 @@ def cancel_request(name):
     if name in request_statuses:
             global queued_requests
             
-            item, location, _, _ = request_statuses[name]
+            item, location, _, _, timestamp = request_statuses[name]
             # """"
             # global cancelPub
             # pub.publish(str.format('{0}\t{1}\t{2}'), name, item, location))
             # """"
             del request_statuses[name]
             queued_requests -= 1
+            for key in request_statuses:
+                req_item, req_loc, req_num, req_complete, req_timestamp = request_statuses[key]
+                if req_timestamp > timestamp:
+                    request_statuses[key] = (req_item, req_loc, req_num-1, req_complete, req_timestamp)
             return render_template('request_form_minimal.html', name=name, request_canceled="yes")
             
     return render_template('request_form_minimal.html', name=name, request_not_found="yes")
@@ -104,7 +124,7 @@ def cancel_request(name):
 def show_status(name):
     if name not in request_statuses:
         return "There is no request for %s<br />It was either already completed or timed out" % name
-    _, _, request_num, completed = request_statuses[name]
+    _, _, request_num, completed, _ = request_statuses[name]
     if completed:
         print "Status success"
         return "Your item is ready at its destination!"
@@ -129,11 +149,10 @@ def end_request(name):
     queued_requests -= 1
     
     for key in request_statuses:
-        req_item, req_loc, req_num, req_complete = request_statuses[key]
-        request_statuses[key] = (req_item, req_loc, req_num-1, req_complete)
+        req_item, req_loc, req_num, req_complete, req_timestamp = request_statuses[key]
+        request_statuses[key] = (req_item, req_loc, req_num-1, req_complete, req_timestamp)
         
     return render_template('request_form_minimal.html', name=name, request_ended="yes")
-    
     
 class JobCompletionNotification(object):
     # create messages that are used to publish feedback/result
@@ -162,8 +181,8 @@ class JobCompletionNotification(object):
         # request_statuses[goal.job] = (item, location, queue_num, True)
         
         # --------------- DEBUG CODE -------------------
-        item, location, queue_num, completed = request_statuses[self._action_name]
-        request_statuses[self._action_name] = (item, location, queue_num, True)
+        item, location, queue_num, completed, timestamp = request_statuses[self._action_name]
+        request_statuses[self._action_name] = (item, location, queue_num, True, timestamp)
         
         
         
@@ -197,8 +216,8 @@ class JobCompletionNotification(object):
             queued_requests -= 1
             
             for key in request_statuses:
-                req_item, req_loc, req_num, req_complete = request_statuses[key]
-                request_statuses[key] = (req_item, req_loc, req_num-1, req_complete)
+                req_item, req_loc, req_num, req_complete, req_timestamp = request_statuses[key]
+                request_statuses[key] = (req_item, req_loc, req_num-1, req_complete, req_timestamp)
         # self._as.set_succeeded(self._result)
 
 # Run the app
