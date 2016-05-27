@@ -3,9 +3,11 @@ from flask import Flask, render_template, request, url_for, flash, make_response
 import Queue
 import threading
 import time
+import socket
 # import rospy
 # import turtlebot_teleop.msg
 # from std_msgs.msg import String
+# import actionlib
 
 pub = None
 cancelPub = None
@@ -229,13 +231,26 @@ if __name__ == '__main__':
     # Requester name      item      location
     # where the delimeter is a tab. The requester name becomes the key
     # for the request, as each requester can only have one outstanding request
-    # pub = rospy.Publisher('item_requests', String, queue_size=0)
-    # cancelPub = rospy.Publisher('cancel_requests', String, queue_size=0)
+    pub = rospy.Publisher('item_requests', String, queue_size=0)
+    cancelPub = rospy.Publisher('cancel_requests', String, queue_size=0)
     
-    # rospy.init_node('web_app')
+    rospy.init_node('web_app')
+    
+    # Initialize usernames
     usernames['test'] = 'test'
+    
+    
     app.secret_key = 'super secret key'
-    app.run( 
-            host="0.0.0.0",
-            port=int("33333")
-    )
+    port_num = 33333
+    success = False
+    while not success:
+        try:
+            app.run( 
+                    host="0.0.0.0",
+                    port=port_num
+            )
+            success = True
+        except socket.error:
+            port_num += 1
+            
+    # Rospy.spin was uneeded as the webapp keeps the python code running
