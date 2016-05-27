@@ -124,10 +124,12 @@ def cancel_request(name):
 def show_status(name):
     if name not in request_statuses:
         return "There is no request for %s<br />It was either already completed or timed out" % name
-    _, _, request_num, completed, _ = request_statuses[name]
+    item, _, request_num, completed, _ = request_statuses[name]
     if completed:
         print "Status success"
         return "Your item is ready at its destination!"
+    elif item == "FAILED":
+        return "The request has failed. Please cancel it and create a new request"
     else:
         print "Status failure"
         return "You are currently number %s in the queue.<br />Estimated time remaining: %s minute(s)" % (str(request_num), str(request_num*2))
@@ -183,6 +185,7 @@ class JobCompletionNotification(object):
         # --------------- DEBUG CODE -------------------
         item, location, queue_num, completed, timestamp = request_statuses[self._action_name]
         request_statuses[self._action_name] = (item, location, queue_num, True, timestamp)
+        
         
         
         

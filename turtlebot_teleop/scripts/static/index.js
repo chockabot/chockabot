@@ -76,7 +76,6 @@ $("#loadingForm").submit(function (event) {
 
 		},
 		error: function () {
-			document.getElementById("LoginMsg").innerHTML = "Couldn't log you in. Please try again";
 			// Do nothing
 		}
 	});
@@ -101,7 +100,6 @@ $("#completeForm").submit(function (event) {
 			}
 		},
 		error: function () {
-			document.getElementById("LoginMsg").innerHTML = "Couldn't log you in. Please try again";
 			// Do nothing
 		}
 	});
@@ -145,8 +143,6 @@ function handleResponse(http) {
 	if (http.readyState == 4) {
 		response = http.responseText;
 		if (response != "Your item is ready at its destination!") {
-			// document.getElementById("complete").style.visibility = "hidden";
-			// document.getElementById("spin").style.visibility = "visible";
 			document.getElementById("waittime").innerHTML = response
 			setTimeout("sendRequest()", 1000);
 		}
@@ -154,11 +150,6 @@ function handleResponse(http) {
 			$(function() {
 				$("#loading_content").fadeOut(500);
 				setTimeout("fadeInComplete()", 500);
-				// $("#complete").fadeIn(500);
-				// $('#complete').addClass('form-success');
-				// setTimeout(function() {$('#wrapper').addClass('form-success');}, 500);
-				// document.getElementById("complete").style.visibility = "visible";
-				// document.getElementById("spin").style.visibility = "hidden";
 				itemPickup = setTimeout("endRequest()", 3100);
 			});
 		}
