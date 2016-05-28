@@ -9,6 +9,8 @@ from std_msgs.msg import String
 import socket
 import actionlib
 import json
+from geometry_msgs.msg import Point, PoseStamped, Pose, Quaternion
+
 
 ITEMS_FILE = '../items.itm' # Files located at homes/cse
 DEST_FILE = '../dest.itm'

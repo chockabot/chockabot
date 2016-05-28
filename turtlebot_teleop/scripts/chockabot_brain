@@ -261,7 +261,7 @@ class ChockabotBrain():
             rospy.loginfo('Could not load from file %s: %s' % (file_name, e))        
         return loaded_locs
         
-     def load_feds(self, file_name):
+    def load_feds(self, file_name):
         item_to_feds = {}
         try:
             f = open(file_name, 'r')
