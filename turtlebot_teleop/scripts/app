@@ -109,7 +109,7 @@ def cancel_request(name):
             item, location, _, _, timestamp = request_statuses[name]
             
             global cancelPub
-            cancelPub.publish(str.format('{0}\t{1}\t{2}'), name, item, location))
+            cancelPub.publish('%s\t%s\t%s' % (name, item, location))
             
             del request_statuses[name]
             queued_requests -= 1
@@ -181,17 +181,23 @@ class JobCompletionNotification(object):
         rospy.loginfo('%s: Executing, ending of a user request %s' % (self._action_name, goal.job))
         
         # Set completed to true
-        item, location, queue_num, completed, timestamp = request_statuses[goal.job]
-        request_statuses[goal.job] = (item, location, queue_num, True, timestamp)
+        item, location, queue_num, completed = request_statuses[goal.job]
+        request_statuses[goal.job] = (item, location, queue_num, True)
         
         # --------------- DEBUG CODE -------------------
-        # item, location, queue_num, completed, timestamp = request_statuses[self._action_name]
-        # request_statuses[self._action_name] = (item, location, queue_num, True, timestamp)
+        item, location, queue_num, completed, timestamp = request_statuses[self._action_name]
+        request_statuses[self._action_name] = (item, location, queue_num, True, timestamp)
         
         
         
         
         for i in range(20):
+            if self._as.is_preempt_requested():
+                rospy.loginfo('%s: Preempted' % self._action_name)
+                self._as.set_preempted()
+                success = False
+                break   
+            
             # Job deleted so we can break
             # User clicked done
             # if goal.job not in request_statuses:
@@ -203,15 +209,9 @@ class JobCompletionNotification(object):
             self._feedback.count += 1
             self._as.publish_feedback(self._feedback)
             r.sleep() # Sleep 1 second before checking again
-            
-            # ------------ Debug code -------------
-            # time.sleep(1)
-            
-        
-        
-        self._result.suceeded = 1 if success else 0
+
         if success:
-           rospy.loginfo('%s: Succeeded' % self._action_name)
+            rospy.loginfo('%s: Succeeded' % self._action_name)
             print "User Clicked action completion"
         else:
             print "User did not complete action"
@@ -223,8 +223,11 @@ class JobCompletionNotification(object):
             for key in request_statuses:
                 req_item, req_loc, req_num, req_complete, req_timestamp = request_statuses[key]
                 request_statuses[key] = (req_item, req_loc, req_num-1, req_complete, req_timestamp)
+        
+        self._result.suceeded = 1 if success else 0
         self._as.set_succeeded(self._result)
-
+        
+        
 # Run the app
 if __name__ == '__main__':    
     # Publish requests to the channel in the string representation of:
@@ -234,23 +237,28 @@ if __name__ == '__main__':
     pub = rospy.Publisher('item_requests', String, queue_size=0)
     cancelPub = rospy.Publisher('cancel_requests', String, queue_size=0)
     
-    rospy.init_node('web_app')
+    rospy.init_node('app')
+    
+    # Create Action Server
+    JobCompletionNotification(rospy.get_name())
     
     # Initialize usernames
     usernames['test'] = 'test'
-    
+    usernames['admin'] = 'hax'
+    usernames['zach'] = 'mrsourpuss'
+    usernames['cody'] = 'theotherguy'
+    usernames['kristi'] = 'hikristi'
+    usernames['krista'] = 'P4$$w0rd'
     
     app.secret_key = 'super secret key'
-    port_num = 33333
-    success = False
-    while not success:
-        try:
-            app.run( 
-                    host="0.0.0.0",
-                    port=port_num
-            )
-            success = True
-        except socket.error:
-            port_num += 1
+    port_num = 33336
+    try:
+        app.run( 
+            host='0.0.0.0',
+            port=port_num
+        )
+        
+    except socket.error as e:
+        rospy.logerr('Port Num %s still in use: %s' % (port_num, e))
             
-    # Rospy.spin was uneeded as the webapp keeps the python code running
+    # rospy.spin() is uneeded as the webapp keeps the python code running

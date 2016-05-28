@@ -234,7 +234,7 @@ if __name__ == '__main__':
     pub = rospy.Publisher('item_requests', String, queue_size=0)
     cancelPub = rospy.Publisher('cancel_requests', String, queue_size=0)
     
-    rospy.init_node('web_app')
+    rospy.init_node('web_app_2')
     
     # Initialize usernames
     usernames['test'] = 'test'
