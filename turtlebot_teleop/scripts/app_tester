@@ -13,7 +13,7 @@ import turtlebot_teleop.msg
 def web_app_client():
     # Creates the SimpleActionClient, passing the type of the action
     # (web_appAction) to the constructor.
-    client = actionlib.SimpleActionClient('web_app', turtlebot_teleop.msg.UserCompleteAction)
+    client = actionlib.SimpleActionClient('app', turtlebot_teleop.msg.UserCompleteAction)
 
     # Waits until the action server has started up and started
     # listening for goals.
