@@ -9,6 +9,12 @@ from std_msgs.msg import String
 import socket
 import actionlib
 
+ITEMS_FILE = '../items.itm' # Files located at homes/cse
+DEST_FILE = '../dest.itm'
+
+items_string = None
+dest_string = None
+
 pub = None
 cancelPub = None
 
@@ -30,7 +36,7 @@ app = Flask(__name__)
 def form():
     userCookie = request.cookies.get('userID')
     if userCookie in usernames:
-        return render_template('request_form_full.html', name=userCookie)
+        return render_template('request_form_full.html', name=userCookie, items=items_string, locs=dest_string)
     return render_template('index.html')
 
 @app.route('/current_job/')
@@ -66,7 +72,7 @@ def loginUser():
         if usernames[username] == password:
             print "User authenticated"
             # Set our cookie and return the request
-            resp = make_response(render_template('request_form_minimal.html', name=username))
+            resp = make_response(render_template('request_form_minimal.html', name=username, items=items_string, locs=dest_string))
             resp.set_cookie('userID', username)
             return resp
             
@@ -117,9 +123,9 @@ def cancel_request(name):
                 req_item, req_loc, req_num, req_complete, req_timestamp = request_statuses[key]
                 if req_timestamp > timestamp:
                     request_statuses[key] = (req_item, req_loc, req_num-1, req_complete, req_timestamp)
-            return render_template('request_form_minimal.html', name=name, request_canceled="yes")
+            return render_template('request_form_minimal.html', name=name, request_canceled="yes", items=items_string, locs=dest_string)
             
-    return render_template('request_form_minimal.html', name=name, request_not_found="yes")
+    return render_template('request_form_minimal.html', name=name, request_not_found="yes", items=items_string, locs=dest_string)
     
 
 @app.route('/show_status/<name>', methods=['GET'])
@@ -140,7 +146,7 @@ def show_status(name):
 def end_request(name):
     global request_statuses
     if name not in request_statuses:
-        return render_template('request_form_minimal.html', name=name, request_not_found="yes")
+        return render_template('request_form_minimal.html', name=name, request_not_found="yes", items=items_string, locs=dest_string)
     
     item, location, queue_num, completed, timestamp = request_statuses[name]
     if not completed:
@@ -156,7 +162,7 @@ def end_request(name):
         req_item, req_loc, req_num, req_complete, req_timestamp = request_statuses[key]
         request_statuses[key] = (req_item, req_loc, req_num-1, req_complete, req_timestamp)
         
-    return render_template('request_form_minimal.html', name=name, request_ended="yes")
+    return render_template('request_form_minimal.html', name=name, request_ended="yes", items=items_string, locs=dest_string)
     
 class JobCompletionNotification(object):
     # create messages that are used to publish feedback/result
@@ -226,7 +232,41 @@ class JobCompletionNotification(object):
         
         self._result.suceeded = 1 if success else 0
         self._as.set_succeeded(self._result)
+
+def load_locs(self, file_name):
+    """
+    Load locations into location arrays
+    """
+    loaded_locs = {}
+    try:
+        f = open(file_name, 'r')
+        new_locs = json.loads( f.read() )
+        f.close()
         
+        for data_name in new_locs.keys():
+            pose_data = new_locs[data_name]
+            
+            loc_pose = Pose()
+            loc_pose.position = Point(pose_data[0][0], pose_data[0][1], 0)
+            if len(pose_data) > 1:
+                loc_pose.orientation.z = pose_data[1][0]
+                loc_pose.orientation.w = pose_data[1][1]
+                
+                
+            loc_pose_stamped = PoseStamped()
+            loc_pose_stamped.pose = loc_pose
+            loaded_locs[data_name] = loc_pose_stamped
+    except Exception as e:
+        rospy.loginfo('Could not load from file %s: %s' % (file_name, e))        
+    return loaded_locs     
+    
+def create_option_list(items):
+    global items_string
+    ret_str = ""
+    for key in items:
+        ret_str += str.format('<option value="{0}">{0}</option', key)
+    return ret_str
+
         
 # Run the app
 if __name__ == '__main__':    
@@ -249,6 +289,12 @@ if __name__ == '__main__':
     usernames['cody'] = 'theotherguy'
     usernames['kristi'] = 'hikristi'
     usernames['krista'] = 'P4$$w0rd'
+    
+    # Load locations
+    item_loc = load_locs(ITEMS_FILE)
+    dest_loc = load_locs(DEST_FILE)
+    items_string = create_option_list(item_loc)
+    dest_string = create_option_list(dest_loc)
     
     app.secret_key = 'super secret key'
     port_num = 33336
