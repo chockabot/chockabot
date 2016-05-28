@@ -194,7 +194,7 @@ class JobCompletionNotification(object):
         completed = True
         if goal.job[0:6] == "FAILED":
             completed = False
-            goal.job = goal.job[7:]
+            goal.job = goal.job[8:]
         
         item, location, queue_num, _, timestamp = request_statuses[goal.job]
         if not completed:
