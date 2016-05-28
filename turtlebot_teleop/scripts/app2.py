@@ -233,8 +233,9 @@ if __name__ == '__main__':
     # for the request, as each requester can only have one outstanding request
     # pub = rospy.Publisher('item_requests', String, queue_size=0)
     # cancelPub = rospy.Publisher('cancel_requests', String, queue_size=0)
-    
-    # rospy.init_node('web_app')
+
+    # rospy.init_node('web_app2')
+
     
     # Initialize usernames
     usernames['test'] = 'test'
