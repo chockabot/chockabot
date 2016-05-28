@@ -231,10 +231,11 @@ if __name__ == '__main__':
     # Requester name      item      location
     # where the delimeter is a tab. The requester name becomes the key
     # for the request, as each requester can only have one outstanding request
-    pub = rospy.Publisher('item_requests', String, queue_size=0)
-    cancelPub = rospy.Publisher('cancel_requests', String, queue_size=0)
-    
-    rospy.init_node('web_app_2')
+    # pub = rospy.Publisher('item_requests', String, queue_size=0)
+    # cancelPub = rospy.Publisher('cancel_requests', String, queue_size=0)
+
+    # rospy.init_node('web_app2')
+
     
     # Initialize usernames
     usernames['test'] = 'test'

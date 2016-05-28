@@ -10,13 +10,11 @@
     <form class="form" id="requestForm" method="POST" action="{{ url_for('itemRequest') }}">
         <label for="item">Item Needed:</label>
         <select name="item">
-            <option value="Medicine">Medicine</option>
-            <option value="Dressings">Dressings</option>
+            {{ items }}
         </select>
         <label for="location">Dropoff location:</label>
         <select name="location">
-            <option value="502">Room 502</option>
-            <option value="503">Room 503</option>
+            {{ locs }}
         </select>
         <button type="submit">Submit Request</button>
     </form>

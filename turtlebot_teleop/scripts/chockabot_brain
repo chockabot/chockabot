@@ -25,26 +25,28 @@ class ChockabotBrain():
 
     ITEMS_FILE = '../items.itm' # Files located at homes/cse
     DEST_FILE = '../dest.itm'
+    FEDUCIAL_FILE = '../fed_file.txt'
     HOMING_PERIOD = 10
 
     def __init__(self, default_files=True):
         rospy.init_node('chockabot_brain')
         
         self.move_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
-        print 'waiting for moving server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch map_file:=/tmp/my_map.yaml` on the robot.'
+        print 'waiting for moving server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch map_file:=<FILE_LOC>` on the robot.'
         self.move_client.wait_for_server()
         print 'Connected move client'
         
-        self.complete_action = actionlib.SimpleActionClient('web_app', turtlebot_teleop.msg.UserCompleteAction)
+        self.complete_action = actionlib.SimpleActionClient('app', turtlebot_teleop.msg.UserCompleteAction)
         print 'waiting for server... if it doesn"t show, run `roslaunch turtlebot_teleop app.launch` on this terminal.'
         self.complete_action.wait_for_server()
-        print 'Connected with web_app'
-        
+        print 'Connected with app'
+
         self.cancel_list = []        
        
         if default_files:
             self.item_loc = self.load_locs(self.ITEMS_FILE)
             self.dest_loc = self.load_locs(self.DEST_FILE)
+            self.item_feducial = self.load_feds(self.FEDUCIAL_FILE)
         else:
             file_name = easygui.fileopenbox(msg="Enter items file to read", filetypes="*.itm")
             if file_name[len(file_name) - 4:len(file_name)] != '.itm':
@@ -56,26 +58,29 @@ class ChockabotBrain():
                 file_name += '.itm'
             self.dest_loc = self.load_locs(file_name)
             
+            file_name = easygui.fileopenbox(msg="Enter feducial file to read", filetypes="*.txt")
+            if file_name[len(file_name) - 4:len(file_name)] != '.txt':
+                file_name += '.txt'
+            self.item_feducial = self.load_feds(file_name)
+            
 
         self.home_timer = None
 
         self.job_sub = rospy.Subscriber('item_requests', String, self.job_callback)
-        # self.cancel_sub = rospy.Subscriber('item_cancellations', String, self.cancel_callback)
+        self.cancel_sub = rospy.Subscriber('cancel_requests', String, self.cancel_callback)
 
         print 'items', self.item_loc
         print 'dests', self.dest_loc
         
-        self.execute_job('hillary', 'dog', 'hall')
-        print 'done'
-
         rospy.spin()
 
     # callback to handle added canceled jobs
-    def cancel_callback(self, data):
-        self.cancel_list.append(data)    
+    def cancel_callback(self, feedback):
+        self.cancel_list.append(feedback.data)    
 
     # callback to handle if it runs into an object.
-    def job_callback(self, data):
+    def job_callback(self, feedback):
+        data = feedback.data
         rospy.loginfo(rospy.get_caller_id() + ' I heard a request for job=%s', data)
 
         try:
@@ -125,12 +130,14 @@ class ChockabotBrain():
             return
         
         # STEP 2: Align with Fiducial + Get Object
-        # TODO (klholden): add a file that saves the mapping of shelves to fiducials
-        # TODO (klholden): add redo capability if failed? (or does cody do that)
-        if not self.get_bin_helper(0):
-            rospy.logerr('Couldn\'t return extract bin.')
-            self.send_failure(name)
-            return
+        fed = 0 if item not in self.item_feducial else self.item_feducial[item]
+        if not self.get_bin_helper(fed):
+            # Try again once more
+            self.travel_to_loc(self.item_loc[item])
+            if not self.get_bin_helper(fed):
+                rospy.logerr('Couldn\'t return extract bin.')
+                self.send_failure(name)
+                return
             
         # STEP 3: Go to destination location        
         if not self.travel_to_loc(self.dest_loc[destination]):
@@ -151,10 +158,12 @@ class ChockabotBrain():
             return
         
         # STEP 6: Place Bin on Shelf
-        # TODO (klholden): add a file that saves the mapping of shelves to fiducials
-        if not self.return_bin_helper(0):
-            rospy.logerr('Couldn\'t return the bin to the shelf.')
-            return
+        if not self.return_bin_helper(fed):
+            # Try again once more
+            self.travel_to_loc(self.item_loc[item])
+            if not self.get_bin_helper(fed):
+                rospy.logerr('Couldn\'t return the bin to the shelf.')
+                return
         
         
     def send_failure(self, name):
@@ -250,6 +259,17 @@ class ChockabotBrain():
         except Exception as e:
             rospy.loginfo('Could not load from file %s: %s' % (file_name, e))        
         return loaded_locs
+        
+     def load_feds(self, file_name):
+        item_to_feds = {}
+        try:
+            f = open(file_name, 'r')
+            item_to_feds = json.loads( f.read() )
+            f.close()
+        except Exception as e:
+            rospy.loginfo('Could not load from file %s: %s' % (file_name, e))
+        return item_to_feds
+        
 
 if __name__=="__main__":
     ChockabotBrain()
