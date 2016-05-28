@@ -1,6 +1,6 @@
 #!/bin/bash
 # runs stuff from turtlebot
-sshlog 'bash -s' < initialize_turtlebot.sh &
+setrobot loggerhead & ssh turtlebot@loggerhead 'bash -s' < initialize_turtlebot.sh &
 sleep(15)
 setrobot loggerhead
 echo "running interactive markers.."
