@@ -1,5 +1,6 @@
 #!/bin/bash
 # runs stuff from turtlebot
+source ~/.bashrc
 setrobot loggerhead & ssh turtlebot@loggerhead 'bash -s' < initialize_turtlebot.sh &
 sleep(15)
 setrobot loggerhead
