@@ -60,14 +60,11 @@ class ChockabotBrain():
         self.home_timer = None
 
         self.job_sub = rospy.Subscriber('item_requests', String, self.job_callback)
-        # self.cancel_sub = rospy.Subscriber('item_cancellations', String, self.cancel_callback)
+        self.cancel_sub = rospy.Subscriber('cancel_requests', String, self.cancel_callback)
 
         print 'items', self.item_loc
         print 'dests', self.dest_loc
         
-        self.execute_job('hillary', 'dog', 'hall')
-        print 'done'
-
         rospy.spin()
 
     # callback to handle added canceled jobs
