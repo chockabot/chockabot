@@ -111,8 +111,7 @@ body :-ms-input-placeholder {
 
 #containerContent.container {
   max-width: 90%;
-  height: 100%;
-  top: 50%;
+  height: 500px;
 }
 
 #containerContent h1 {
