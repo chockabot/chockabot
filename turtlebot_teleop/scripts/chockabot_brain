@@ -179,6 +179,7 @@ class ChockabotBrain():
     def travel_to_loc(self, pose_stamped):
         goal = MoveBaseGoal()
         goal.target_pose = pose_stamped
+        goal.target_pose.header.frame_id = 'odom'
         self.move_client.send_goal(goal)
         self.move_client.wait_for_result()        
         return self.move_client.get_result() == ACTION_SUCCEEDED
@@ -186,27 +187,27 @@ class ChockabotBrain():
     def get_bin_helper(self, fiducial):
         rospy.wait_for_service('get_bin')
         try:
-            print 'requesting fiducial ', fiducal, '...'
+            rospy.loginfo('requesting fiducial ' + str(fiducial) + '...')
             get_bin = rospy.ServiceProxy('get_bin', GetBin)
-            res = get_bin(fiducal)
-            print 'result: ', res.result
+            res = get_bin(fiducial)
+            rospy.loginfo('result: ' + str(res.result))
             return True
             
         except rospy.ServiceException, e:
-            print "Service call failed: %s"%e
+            rospy.logerr( "Service call failed: %s" % e)
             return False
             
     def return_bin_helper(self, fiducial):
         rospy.wait_for_service('set_bin')
         try:
-            print 'requesting fiducial ', fiducal, '...'
+            rospy.loginfo('requesting fiducial ' + str(fiducial) + '...')
             set_bin = rospy.ServiceProxy('set_bin', GetBin)
-            res = set_bin(fiducal)
-            print 'result: ', res.result
+            res = set_bin(fiducial)
+            rospy.loginfo('result: ' + str(res.result))
             return True
             
         except rospy.ServiceException, e:
-            print "Service call failed: %s"%e
+            rospy.logerr("Service call failed: %s" % e)
             return False
 
     def create_home_timer(self):
@@ -223,7 +224,7 @@ class ChockabotBrain():
         if self.dest_loc['home']:   
             home_goal.target_pose = self.dest_loc['home']
             
-        # home_goal.target_pose.header.frame_id = ???
+        home_goal.target_pose.header.frame_id = 'odom'
         self.move_client.send_goal(home_goal)
         self.move_client.wait_for_result()
         
@@ -272,7 +273,7 @@ class ChockabotBrain():
         
 
 if __name__=="__main__":
-    ChockabotBrain()
+    ChockabotBrain(False)
     
     
     

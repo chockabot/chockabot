@@ -115,8 +115,9 @@ def cancel_request(name):
             
             item, location, _, _, timestamp = request_statuses[name]
             
-            global cancelPub
-            cancelPub.publish('%s\t%s\t%s' % (name, item, location))
+            if name != "FAILED":
+                global cancelPub
+                cancelPub.publish('%s\t%s\t%s' % (name, item, location))
             
             del request_statuses[name]
             queued_requests -= 1
@@ -275,9 +276,10 @@ def load_locs(file_name):
     
 def create_option_list(items):
     global items_string
-    ret_str = ""
+    ret_str = "\n"
     for key in items:
-        ret_str += str.format('<option value="{0}">{0}</option', key)
+        if key != "home":
+            ret_str += str.format('<option value="{0}">{0}</option>\n', key)
     return ret_str
 
         
