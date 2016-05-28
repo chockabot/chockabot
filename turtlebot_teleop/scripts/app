@@ -8,6 +8,7 @@ import turtlebot_teleop.msg
 from std_msgs.msg import String
 import socket
 import actionlib
+import json
 
 ITEMS_FILE = '../items.itm' # Files located at homes/cse
 DEST_FILE = '../dest.itm'
@@ -187,12 +188,24 @@ class JobCompletionNotification(object):
         rospy.loginfo('%s: Executing, ending of a user request %s' % (self._action_name, goal.job))
         
         # Set completed to true
-        item, location, queue_num, completed = request_statuses[goal.job]
-        request_statuses[goal.job] = (item, location, queue_num, True)
+        completed = True
+        if goal.job[0:6] == "FAILED":
+            completed = False
+            goal.job = goal.job[7:]
+        
+        item, location, queue_num, _, timestamp = request_statuses[goal.job]
+        if not completed:
+            item = "FAILED"
+            request_statuses[goal.job] = (item, location, queue_num, completed, timestamp)
+            self._result.suceeded = 0
+            self._as.set_succeeded(self._result)
+            return
+            
+        request_statuses[goal.job] = (item, location, queue_num, completed, timestamp)
         
         # --------------- DEBUG CODE -------------------
-        item, location, queue_num, completed, timestamp = request_statuses[self._action_name]
-        request_statuses[self._action_name] = (item, location, queue_num, True, timestamp)
+        # item, location, queue_num, completed, timestamp = request_statuses[self._action_name]
+        # request_statuses[self._action_name] = (item, location, queue_num, True, timestamp)
         
         
         
@@ -233,7 +246,7 @@ class JobCompletionNotification(object):
         self._result.suceeded = 1 if success else 0
         self._as.set_succeeded(self._result)
 
-def load_locs(self, file_name):
+def load_locs(file_name):
     """
     Load locations into location arrays
     """
