@@ -54,9 +54,9 @@ POSE_TYPE = 2
 REGION_TYPE = 1
 type_to_create = {
     POSE_TYPE : lambda pose_data, name: makePoseMarker(
-        Point(pose_data[0][0], pose_data[0][1], 0), pose_data[1], name),
+        Point(pose_data[0][0], pose_data[0][1], 2), pose_data[1], name),
     REGION_TYPE : lambda pose_data, name: makeRegionMarker(
-        Point(pose_data[0][0], pose_data[0][1], 0), name)
+        Point(pose_data[0][0], pose_data[0][1], 2), name)
 }
 
 def processFeedback( feedback ):
@@ -174,7 +174,7 @@ def makeBoxControl( msg ):
     
 def makeMenuMarker( position ):
     int_marker = InteractiveMarker()
-    int_marker.header.frame_id = "odom"
+    int_marker.header.frame_id = "map"
     int_marker.pose.position = position
     int_marker.scale = 1
 
@@ -199,7 +199,7 @@ def makeMenuMarker( position ):
     
 def makeRegionMarker( position, value=None ):
     int_marker = InteractiveMarker()
-    int_marker.header.frame_id = "odom"
+    int_marker.header.frame_id = "map"
     int_marker.pose.position = position
     int_marker.scale = 1
 
@@ -233,7 +233,7 @@ def makeRegionMarker( position, value=None ):
 
 def makePoseMarker( position, orientation=None, value=None ):
     int_marker = InteractiveMarker()
-    int_marker.header.frame_id = "odom"
+    int_marker.header.frame_id = "map"
     int_marker.pose.position = position
     int_marker.scale = 1
     
@@ -309,7 +309,7 @@ def navigate ( feedback ):
     
     message = PoseStamped()
     
-    message.header.frame_id = 'odom'
+    message.header.frame_id = 'map'
     message.header.seq = seq_num
     seq_num += 1
     message.pose = Pose(Point(x, y, 0), Quaternion(0, 0, z, w))

@@ -156,7 +156,7 @@ function handleResponse(http) {
 			$(function() {
 				$("#loading_content").fadeOut(500);
 				setTimeout("fadeInComplete()", 500);
-				itemPickup = setTimeout("endRequest()", 3100);
+				itemPickup = setTimeout("endRequest()", 31000);
 			});
 		}
 	}
