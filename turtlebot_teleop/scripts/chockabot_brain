@@ -29,13 +29,16 @@ class ChockabotBrain():
     HOMING_PERIOD = 120
 
     def __init__(self, default_files=True):
+        # Intitializes the node
         rospy.init_node('chockabot_brain')
         
+        # Creates a move client for robot map movements
         self.move_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
         print 'waiting for moving server... if it doesn"t show, run `roslaunch turtlebot_navigation 3d_amcl.launch map_file:=<FILE_LOC>` on the robot.'
         self.move_client.wait_for_server()
         print 'Connected move client'
         
+        # Creates an action client
         self.complete_action = actionlib.SimpleActionClient('app', turtlebot_teleop.msg.UserCompleteAction)
         print 'waiting for server... if it doesn"t show, run `roslaunch turtlebot_teleop app.launch` on this terminal.'
         self.complete_action.wait_for_server()
@@ -155,7 +158,7 @@ class ChockabotBrain():
         # STEP 5&6: Return item
         self.return_item(name, item)
 
-
+    # Calls the steps to return an item to its location
     def return_item(self, name, item):
         # STEP 5: Return to Shelf Location
         if not self.travel_to_loc(self.item_loc[item]):
@@ -170,7 +173,7 @@ class ChockabotBrain():
                 rospy.logerr('Couldn\'t return the bin to the shelf.')
                 return
     
-    
+    # Checks that the job by a given name has not been canceled.
     def check_cancellation(self, name):
         if name in self.cancel_list:
             self.cancel_list.remove(name)
@@ -178,16 +181,19 @@ class ChockabotBrain():
             return True
         return False
     
+    # Sends a failure to the front end.
     def send_failure(self, name):
         failure = 'FAILED: %s' % name
         self.send_completion(failure)
     
+    # Sends a completed task message to the front end
     def send_completion(self, name):
         self.complete_action.wait_for_server()
         goal = turtlebot_teleop.msg.UserCompleteGoal(job=name)
         self.complete_action.send_goal(goal)
         self.complete_action.wait_for_result()        
-                
+    
+    # Sends the robot to the given destination     
     def travel_to_loc(self, pose_stamped):
         goal = MoveBaseGoal()
         goal.target_pose = pose_stamped
@@ -202,7 +208,8 @@ class ChockabotBrain():
         else:
             print 'failed in traveling to get item: %s' % res
         return  res
-        
+    
+    # Calls the bin retreival service 
     def get_bin_helper(self, fiducial):
         rospy.wait_for_service('get_bin')
         try:
@@ -215,7 +222,8 @@ class ChockabotBrain():
         except rospy.ServiceException, e:
             rospy.logerr( "Service call failed: %s" % e)
             return False
-            
+    
+    # Calls the bin return service     
     def return_bin_helper(self, fiducial):
         rospy.wait_for_service('set_bin')
         try:
@@ -229,6 +237,9 @@ class ChockabotBrain():
             rospy.logerr("Service call failed: %s" % e)
             return False
 
+    # This creates a new timer after a job has finished to notify the robot when to go home
+    # because it has timed out on waiting for jobs. This timer is cancelled when a new job
+    # is given.
     def create_home_timer(self):
         if self.home_timer:
             self.home_timer.cancel()
@@ -236,6 +247,9 @@ class ChockabotBrain():
         # Create a new timer
         home_timer = rospy.Timer(rospy.Duration(self.HOMING_PERIOD), self.go_home_youre_drunk, True)
         
+    # The best method in the entire file. This is called when the robot has timed out. If no
+    # new job is sent within the time frame then this message sends the robot home so it can
+    # be charged.
     def go_home_youre_drunk(self, feedback):
         rospy.logerr(rospy.get_caller_id() + ' timed out and headed home')
         home_goal = MoveBaseGoal()
@@ -258,7 +272,7 @@ class ChockabotBrain():
             # Robot was too drunk to make it home
             rospy.logerr(rospy.get_caller_id() + ' did not make it home #drunk')
         
-        
+    # Method to load maps of location names to locations both for items and destinations
     def load_locs(self, file_name):
         loaded_locs = {}
         try:
@@ -285,7 +299,8 @@ class ChockabotBrain():
         except Exception as e:
             rospy.loginfo('Could not load from file %s: %s' % (file_name, e))        
         return loaded_locs
-        
+    
+    # Method to load the feducials from the feducial file, maps items to feducials
     def load_feds(self, file_name):
         item_to_feds = {}
         try:
