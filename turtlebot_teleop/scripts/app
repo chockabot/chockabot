@@ -197,7 +197,7 @@ class JobCompletionNotification(object):
             goal.job = goal.job[8:]
         
         # Check if request has already been canceled
-        if not request_statuses[goal.job]:
+        if goal.job not in request_statuses:
             # Must exit immediately
             self._result.suceeded = 0
             self._as.set_succeeded(self._result)

@@ -71,9 +71,9 @@ class FiducialServer():
     # The service call to retrieve a bin from a shelf.
     def get_bin(self, bin_request):
         self.bin_no = bin_request.bin
-        
+        print 'GET_BIN'
         try:
-            self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
+            # self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
             self.advance_to_bin()
             self.pick_up_bin()
             self.reverse_from_bin(20)
@@ -87,9 +87,9 @@ class FiducialServer():
     # The service call to place a bin on the shelf.
     def set_bin(self, bin_request):
         self.bin_no = bin_request.bin
-        
+        print 'SET_BIN'
         try:
-            self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
+            # self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
             self.advance_to_bin()
             self.set_down_bin()
             self.reverse_from_bin(20)
@@ -292,7 +292,6 @@ class FiducialServer():
                     new_twist.angular.z = twist.angular.z
                     twist = new_twist
                     rospy.sleep(0.5)
-                    
             # publishes the movement and re-checks the position.
             self.cmd_vel.publish(twist)
             rospy.sleep(0.8)
@@ -305,7 +304,7 @@ class FiducialServer():
     # this method controlls the linear actuator by setting it down
     def set_down_bin(self):
         print 'in state: set down bin'
-        self.set_bin_value(0)
+        self.set_bin_value(-205) # adjusted rather than re-uploading to arduino to make it 0
         
     def set_bin_value(self, pos):
         print 'publishing to linear actuator topic..'
@@ -316,6 +315,7 @@ class FiducialServer():
         self.linear_actuator_pub.publish(to_publish)
         self.linear_actuator_position = pos + 11
         t = time.clock()
+        print 'Reading value: ' + str(self.linear_actuator_position)
         while abs(self.linear_actuator_position - pos) > 10:
             if (time.clock() - t > LINEAR_ACTUATOR_POSITION_TIMEOUT):
                 raise ChockabotError('linear actuator timed out.')

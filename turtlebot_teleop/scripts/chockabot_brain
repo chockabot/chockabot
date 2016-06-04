@@ -156,10 +156,10 @@ class ChockabotBrain():
             rospy.loginfo(rospy.get_caller_id() + ' did not finish job for %s', name)      
 
         # STEP 5&6: Return item
-        self.return_item(name, item)
+        self.return_item(name, item, fed)
 
     # Calls the steps to return an item to its location
-    def return_item(self, name, item):
+    def return_item(self, name, item, fed):
         # STEP 5: Return to Shelf Location
         if not self.travel_to_loc(self.item_loc[item]):
             rospy.logerr('Couldn\'t return to bin location to return bin.')
@@ -257,7 +257,7 @@ class ChockabotBrain():
         if 'home' not in self.dest_loc:
             rospy.logerr(rospy.get_caller_id() + ' forgot where home was. Awww :((')
         
-        if self.dest_loc['home']:   
+        if self.dest_loc['Home']:   
             home_goal.target_pose = self.dest_loc['home']
             
         home_goal.target_pose.header.frame_id = 'map'
