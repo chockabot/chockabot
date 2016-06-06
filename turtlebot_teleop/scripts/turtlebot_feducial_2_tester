@@ -9,11 +9,11 @@ from turtlebot_teleop.srv import GetBin, GetBinRequest, GetBinResponse
 #from move_base_msgs.msg import MoveBaseActionGoal, MoveBaseActionFeedback, MoveBaseActionResult, MoveBaseAction, MoveBaseGoal, MoveBaseResult
 
 def get_bin_client():
-    rospy.wait_for_service('set_bin')
+    rospy.wait_for_service('get_bin')
     try:
         fiducal = 0
         print 'setting fiducial ', fiducal, '...'
-        get_bin = rospy.ServiceProxy('set_bin', GetBin)
+        get_bin = rospy.ServiceProxy('get_bin', GetBin)
         res = get_bin(fiducal)
         print 'result: ', res.result
     except rospy.ServiceException, e:

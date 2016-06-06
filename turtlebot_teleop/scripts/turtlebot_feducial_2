@@ -11,11 +11,11 @@ from ar_track_alvar_msgs.msg import AlvarMarkers
 from move_base_msgs.msg import MoveBaseActionGoal, MoveBaseActionFeedback, MoveBaseActionResult, MoveBaseAction, MoveBaseGoal, MoveBaseResult
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
-INITIAL_DISTANCE_FROM_FIDUCIAL = 1.5 # the distance that the turtlebot should be in front of the fiducial when it stops to begin twist() navigatin.
-FINAL_DISTANCE_FROM_FIDUCIAL = 0.6   # the distance that the turtlebot should be in front of the fiducial when it stops to pick up the bin.
+INITIAL_DISTANCE_FROM_FIDUCIAL = 1.6 # the distance that the turtlebot should be in front of the fiducial when it stops to begin twist() navigatin.
+FINAL_DISTANCE_FROM_FIDUCIAL = 0.595   # the distance that the turtlebot should be in front of the fiducial when it stops to pick up the bin.
 
-GOAL_POSITION_TOLERANCE = 0.03 # the tolerance to accept the robots position as the final bin pick up positoin. (m?)
-GOAL_YAW_TOLERANCE = 0.01 # the tolernace to accept the robot's yaw as the final bin pick up yaw. (radians)
+GOAL_POSITION_TOLERANCE = 0.039 # the tolerance to accept the robots position as the final bin pick up positoin. (m?)
+GOAL_YAW_TOLERANCE = 0.015 # the tolernace to accept the robot's yaw as the final bin pick up yaw. (radians)
 
 MAX_SPEED = 0.12 # the maximum speed of the robot during the move up to bin phase.
 
@@ -73,8 +73,8 @@ class FiducialServer():
         self.bin_no = bin_request.bin
         print 'GET_BIN'
         try:
-            # self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
-            self.advance_to_bin()
+            self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
+            self.advance_to_bin(FINAL_DISTANCE_FROM_FIDUCIAL)
             self.pick_up_bin()
             self.reverse_from_bin(20)
         except ChockabotError as e:
@@ -89,8 +89,8 @@ class FiducialServer():
         self.bin_no = bin_request.bin
         print 'SET_BIN'
         try:
-            # self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
-            self.advance_to_bin()
+            self.line_up_robot(INITIAL_DISTANCE_FROM_FIDUCIAL)
+            self.advance_to_bin(FINAL_DISTANCE_FROM_FIDUCIAL + .006)
             self.set_down_bin()
             self.reverse_from_bin(20)
         except ChockabotError as e:
@@ -205,9 +205,9 @@ class FiducialServer():
         
     # this method advances the robot slowly forward to the bin. it advances, stops, and makes sure it's in line with the fiducial.
     # if it starts going off course, it will attempt to correct itself. if it can't do so, it will back up and retry.
-    def advance_to_bin(self):
+    def advance_to_bin(self, final_distance):
         print 'advancing to bin'
-        num_consecutive_yaws_to_check = 1
+        num_consecutive_yaws_to_check = 3
         final_yaws = []
         goal_position_achieved = False # after the goal position is achieved, we only worry about the orientation.
         
@@ -223,13 +223,14 @@ class FiducialServer():
             # calculates the needed 'roll' (roll of the ar pose marker is actually the yaw of the robot) to determine which way the fiducial is facing.
             final_yaw = euler_from_quaternion((fiducial_pose.orientation.x, fiducial_pose.orientation.y, fiducial_pose.orientation.z, fiducial_pose.orientation.w))[0]
                         
-            # the new goal's position will be FINAL_DISTANCE_FROM_FIDUCIAL away, lined up exactly facing toward the fiducial.
-            goal_position_x = fiducial_pose.position.z + (FINAL_DISTANCE_FROM_FIDUCIAL * math.cos(final_yaw)) # uses 'z' because camera_rgb's z is actually representative of base link's y.
-            goal_position_y = -1 * ( fiducial_pose.position.x + (FINAL_DISTANCE_FROM_FIDUCIAL * -1 * math.sin(final_yaw))) # multiplies by -1 because camera_rgb's -x is representavices of base link's x
+            # the new goal's position will be final_distance away, lined up exactly facing toward the fiducial.
+            goal_position_x = fiducial_pose.position.z + (final_distance * math.cos(final_yaw)) # uses 'z' because camera_rgb's z is actually representative of base link's y.
+            goal_position_y = -1 * ( fiducial_pose.position.x + (final_distance * -1 * math.sin(final_yaw))) # multiplies by -1 because camera_rgb's -x is representavices of base link's x
             
             print 'goal x = ', goal_position_x, ' goal y = ', goal_position_y
             
             goal_distance = math.sqrt(goal_position_x**2 + goal_position_y**2)
+
             
             if goal_distance < GOAL_POSITION_TOLERANCE:
                 goal_position_achieved = True
@@ -264,7 +265,7 @@ class FiducialServer():
                 twist.linear.x = 0
                 
                 # publishes rotation multiple times to make it faster.
-                for i in range(15):
+                for i in range(13):
                     self.cmd_vel.publish(twist)
                     new_twist = Twist()
                     new_twist.linear.x = twist.linear.x
@@ -272,18 +273,46 @@ class FiducialServer():
                     twist = new_twist
                     rospy.sleep(0.2)
             else:
-                print 'not within tolerance yet. moving robot...'
-                calculated_yaw = math.atan2(goal_position_y, goal_position_x) # it IS supposed to be x and y
-                print ' calculated yaw: ', calculated_yaw, ' goal distance: ', goal_distance
-                # if we overshot the goal, try going backwards instead.
-                if abs(calculated_yaw) > math.pi / 2:
-                    twist.angular.z = 0
-                    twist.linear.x = -.05
+                if goal_position_x > .22:
+                    print 'not within tolerance yet. moving robot using tangent method...'
+                    calculated_yaw = math.atan2(goal_position_y, goal_position_x * 0.92) # it IS supposed to be y and x
+                    print ' calculated yaw: ', calculated_yaw, ' goal distance: ', goal_distance
+                    # if we overshot the goal, try going backwards instead.
+                    if abs(calculated_yaw) > math.pi / 2:
+                        twist.angular.z = 0
+                        twist.linear.x = -.05
+                    elif abs(calculated_yaw) > 0.5: # if its a large yaw turn
+                        print 'Large yaw value!!!!!'
+                        twist.angular.z = calculated_yaw / 2.0#* (1 + goal_distance)
+                        twist.linear.x = max(min(0.4 * goal_distance, MAX_SPEED), .033)
+                    else:
+                        twist.angular.z = calculated_yaw#* (1 + goal_distance)
+                        twist.linear.x = max(min(0.4 * goal_distance, MAX_SPEED), .033)
                 else:
-                    twist.angular.z = calculated_yaw#* (1 + goal_distance)
-                    twist.linear.x = max(min(0.4 * goal_distance, MAX_SPEED), .033)
+                    print 'Distance from feducial is close. using easygoing tangent method.'
+                    calculated_yaw = math.atan2(goal_position_y, goal_position_x * 2.0) # it IS supposed to bey and x
+                    print ' calculated yaw: ', calculated_yaw, ' goal distance: ', goal_distance
+                    # if we overshot the goal, try going backwards instead.
+                    if abs(calculated_yaw) > math.pi / 2:
+                        twist.angular.z = 0
+                        twist.linear.x = -.05
+                    elif abs(calculated_yaw) > 0.5: # if its a large yaw turn
+                        print 'Large yaw value!!!!!'
+                        twist.angular.z = calculated_yaw#* (1 + goal_distance)
+                        twist.linear.x = max(min(0.4 * goal_distance, MAX_SPEED), .033)
+                    else:
+                        twist.angular.z = calculated_yaw#* (1 + goal_distance)
+                        twist.linear.x = max(min(0.4 * goal_distance, MAX_SPEED), .033)
                 
             # if were still pretty far away, we can publish more than once.
+            # if goal_distance > 0.8:
+            #     for i in range(2):
+            #         self.cmd_vel.publish(twist)
+            #         new_twist = Twist()
+            #         new_twist.linear.x = twist.linear.x
+            #         new_twist.angular.z = twist.angular.z
+            #         twist = new_twist
+            #         rospy.sleep(0.5)
             if goal_distance > .16:
                 for i in range(1):
                     self.cmd_vel.publish(twist)
